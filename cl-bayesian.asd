@@ -25,4 +25,5 @@
      ;; (:file "polynomials")
      )))
   :depends-on
-  (:iterate :metabang-bind :cl-utilities :anaphora :xarray :lla :cl-random))
+  (:iterate :metabang-bind :cl-utilities :anaphora :xarray :lla
+            :cl-random :tpapp-utils))
