@@ -10,7 +10,16 @@
    (accepted :accessor accepted :initform 0)))
 
 (defun acceptance-ratio (counter)
-  (coerce (/ (accepted counter) (total counter)) 'double-float))
+  (with-slots (accepted total) counter
+    (if (zerop total)
+        nil
+        (coerce (/ accepted total) 'double-float))))
+
+(defmethod print-object ((counter acceptance-counter) stream)
+  (print-unreadable-object (counter stream :type t)
+    (with-slots (total accepted) counter
+      (format stream "~A/~A=~A" accepted total (acceptance-ratio counter)))))
+
 
 (defun increment-counter (counter accepted-p)
   (when accepted-p
@@ -142,10 +151,13 @@
            (values))
          ;; updaters for vectors
          ,@(mapcar (lambda (name)
-                     `(defmethod update-parameter ((mcmc ,class-name) (parameter (eql ',name)))
-                        (with-slots (,name) mcmc
+                     `(defmethod update-parameter ((mcmc ,class-name)
+                                                   (parameter (eql ',name)))
+                        (bind (((:slots-read-only ,name) mcmc))
                           (dotimes (i (length ,name))
-                            (setf (aref ,name i) (update-parameter-in-vector mcmc ',name i))))))
+                            (setf (aref ,name i)
+                                  (update-parameter-in-vector mcmc ',name i)))
+                          ,name)))
                    vector-parameters)))))
 
 
@@ -153,20 +165,31 @@
 ;;;;  Utility functions for defining updaters.
 ;;;;
 
-(defmacro define-updater ((class parameter &key (instance 'mcmc) (vector-index nil))
-                          (&rest slots)  &body body)
+(defun class-and-instance (class-maybe-instance)
+  "Return (values CLASS INSTANCE), generated from a CLASS or (CLASS
+INSTANCE) specification.  Also checks that everything is a symbol."
+  (if (atom class-maybe-instance)
+      (progn
+        (check-type class-maybe-instance symbol)
+        (values class-maybe-instance (gensym (string class-maybe-instance))))
+      (bind (((instance class) class-maybe-instance))
+        (values class instance))))
+
+(defmacro define-updater (((class &optional (instance (gensym* class))) parameter
+                           &key (vector-index nil) slots)
+                          &body body)
   "Define an update-parameter (or update-parameter-in-vector, if
 vector-index) method specialized to class and parameter.  The method will
 be called with the given instance name.  Slots are expanded with bind
 using :slots-read-only.  If vector-index, it will be used to index the vector."
   (check-type class symbol)
-  (check-type parameter symbol)
   (check-type instance symbol)
+  (check-type parameter symbol)
   (check-type vector-index symbol)      ; nil is a symbol, too
   `(defmethod ,@(if vector-index
                     `(update-parameter-in-vector 
-                        ((,instance ,class) (parameter (eql ',parameter))
-                         ,vector-index))
+                      ((,instance ,class) (parameter (eql ',parameter))
+                       ,vector-index))
                     `(update-parameter
                       ((,instance ,class) (parameter (eql ',parameter)))))
        (bind (,@(if slots
@@ -174,18 +197,21 @@ using :slots-read-only.  If vector-index, it will be used to index the vector."
                     nil))
          ,@body)))
 
-(defmacro define-metropolis-updater ((class parameter &key
-                                            (instance 'mcmc)
-                                            (vector-index nil)
-                                            (counter (make-symbol* parameter
-                                                                   '-counter))
-                                            (propdist (make-symbol* parameter
-                                                                    '-propdist)))
-                                     (&rest slots) &body body)
+(defmacro define-metropolis-updater (((class &optional (instance (gensym* class)))
+                                      parameter &key
+                                      slots
+                                      (vector-index nil)
+                                      (counter (make-symbol* parameter
+                                                             '-counter))
+                                      (propdist (make-symbol* parameter
+                                                              '-propdist)))
+                                     &body body)
   "Like define-updater, but with counter and proposal distribution
 available with the given slot names (can be slot-name
 or (variable-name slot-name)."
-  `(define-updater (,class ,parameter :instance ,instance :vector-index ,vector-index) ,slots
+  `(define-updater ((,class ,instance) ,parameter 
+                    :slots ,slots
+                    :vector-index ,vector-index)
      (bind (((:slots ,parameter ,counter ,propdist) ,instance))
        ,@body)))
 
@@ -211,14 +237,13 @@ X-PROPOSAL, based on L-P-RATIO (the log posterior-ratio)."
                     (t (< (random 1d0) (exp l-p-ratio))))))
     (if accept-p
         (values x-proposal t)
-        (values x))))
+        (values x nil))))
   
 (defun metropolis-step (x x-proposal l-p-ratio counter)
   "Perform a Metropolis(-Hastings) step, incrementing the counter if
-necessary."
+necessary.  Return the new value."
   (bind (((:values x-next accepted-p) (metropolis-step* x x-proposal l-p-ratio)))
-    (when accepted-p
-      (increment-counter counter accepted-p))
+    (increment-counter counter accepted-p)
     x-next))
 
 (defun run-mcmc (mcmc n &key (burn-in (max (floor n 10) 1000)))
