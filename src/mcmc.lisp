@@ -87,10 +87,10 @@
                  (push name parameters)
                  (case updater
                    ;; Gibbs: nothing needs to be done, just some sanity checks
-                   (:gibbs 
+                   ((:gibbs :deterministic) 
                       (when (or counter-supplied-p propdist-supplied-p)
-                        (error "a Gibbs sampler doesn't need a counter and/or ~
-                                updater-parameters")))
+                        (error "Deterministic and Gibbs updaters don't ~
+                                need a counter and/or updater-parameters")))
                    ;; Metropolis
                    (:metropolis
                       (push (cons (make-symbol* name '- counter) name) counters)
@@ -146,8 +146,7 @@
          ;; update all variables
          (defmethod update ((mcmc ,class-name))
            (dolist (parameter ',parameters)
-             (setf (slot-value mcmc parameter)
-                   (update-parameter mcmc parameter)))
+             (update-parameter mcmc parameter))
            (values))
          ;; updaters for vectors
          ,@(mapcar (lambda (name)
@@ -165,41 +164,36 @@
 ;;;;  Utility functions for defining updaters.
 ;;;;
 
-(defun class-and-instance (class-maybe-instance)
-  "Return (values CLASS INSTANCE), generated from a CLASS or (CLASS
-INSTANCE) specification.  Also checks that everything is a symbol."
-  (if (atom class-maybe-instance)
-      (progn
-        (check-type class-maybe-instance symbol)
-        (values class-maybe-instance (gensym (string class-maybe-instance))))
-      (bind (((instance class) class-maybe-instance))
-        (values class instance))))
+(defun instance-and-class (instance-and-maybe-class)
+  "Return list (instance class).  If an atom or a single element is
+given, it is used as both the instance and class name, otherwise a
+two-element list is expected.  Arguments are checked to be symbols."
+  (bind (((instance &optional (class instance)) (mklist instance-and-maybe-class)))
+    (check-type instance symbol)
+    (check-type class symbol)
+    (list instance class)))
 
-(defmacro define-updater (((class &optional (instance (gensym* class))) parameter
-                           &key (vector-index nil) slots)
+(defmacro define-updater ((instance-and-maybe-class 
+                           parameter &key (vector-index nil))
                           &body body)
   "Define an update-parameter (or update-parameter-in-vector, if
 vector-index) method specialized to class and parameter.  The method will
 be called with the given instance name.  Slots are expanded with bind
 using :slots-read-only.  If vector-index, it will be used to index the vector."
-  (check-type class symbol)
-  (check-type instance symbol)
-  (check-type parameter symbol)
-  (check-type vector-index symbol)      ; nil is a symbol, too
-  `(defmethod ,@(if vector-index
-                    `(update-parameter-in-vector 
-                      ((,instance ,class) (parameter (eql ',parameter))
-                       ,vector-index))
-                    `(update-parameter
-                      ((,instance ,class) (parameter (eql ',parameter)))))
-       (bind (,@(if slots
-                    `(((:slots-read-only ,@slots) ,instance))
-                    nil))
-         ,@body)))
+  (bind (((instance class) (instance-and-class instance-and-maybe-class)))
+    (check-type parameter symbol)
+    (check-type vector-index symbol)    ; nil is a symbol, too
+    `(defmethod ,@(if vector-index
+                      `(update-parameter-in-vector 
+                        ((,instance ,class) (parameter (eql ',parameter))
+                         ,vector-index))
+                      `(update-parameter
+                        ((,instance ,class) (parameter (eql ',parameter)))))
+       (setf (slot-value ,instance ',parameter)
+             (locally ,@body)))))
 
-(defmacro define-metropolis-updater (((class &optional (instance (gensym* class)))
+(defmacro define-metropolis-updater ((instance-and-maybe-class
                                       parameter &key
-                                      slots
                                       (vector-index nil)
                                       (counter (make-symbol* parameter
                                                              '-counter))
@@ -209,12 +203,11 @@ using :slots-read-only.  If vector-index, it will be used to index the vector."
   "Like define-updater, but with counter and proposal distribution
 available with the given slot names (can be slot-name
 or (variable-name slot-name)."
-  `(define-updater ((,class ,instance) ,parameter 
-                    :slots ,slots
-                    :vector-index ,vector-index)
-     (bind (((:slots ,parameter ,counter ,propdist) ,instance))
-       ,@body)))
-
+  (bind (((instance class) (instance-and-class instance-and-maybe-class)))
+    `(define-updater ((,instance ,class) ,parameter 
+                      :vector-index ,vector-index)
+       (bind (((:slots ,counter ,propdist) ,instance))
+         ,@body))))
 
 (defun log-posterior-ratio (x xnext log-posterior/proposal)
   "Calculate the log posterior ratio by calling the
@@ -239,19 +232,40 @@ X-PROPOSAL, based on L-P-RATIO (the log posterior-ratio)."
         (values x-proposal t)
         (values x nil))))
   
-(defun metropolis-step (x x-proposal l-p-ratio counter)
-  "Perform a Metropolis(-Hastings) step, incrementing the counter if
-necessary.  Return the new value."
-  (bind (((:values x-next accepted-p) (metropolis-step* x x-proposal l-p-ratio)))
-    (increment-counter counter accepted-p)
-    x-next))
+(defun metropolis-step (x x-proposal log-posterior/proposal counter)
+  "Perform a Metropolis(-Hastings) step, incrementing the counter if necessary.
+Return the new value, and ACCEPTED? as the second value."
+  (bind ((l-p-ratio (log-posterior-ratio x x-proposal log-posterior/proposal))
+         ((:values x-next accepted?) (metropolis-step* x x-proposal l-p-ratio)))
+    (increment-counter counter accepted?)
+    (values x-next accepted?)))
 
-(defun run-mcmc (mcmc n &key (burn-in (max (floor n 10) 1000)))
+(defparameter *stop-mcmc* nil)
+
+(defun run-mcmc (mcmc n &key (burn-in (max (floor n 10) 1000))
+                 (progress-indicator (floor n 80)))
+  (setf *stop-mcmc* nil)
+  ;; burn-in
   (dotimes (i burn-in)
-    (update mcmc)) 
+    (when *stop-mcmc*
+      (break))
+    (when (and progress-indicator (zerop (rem i progress-indicator)))
+      (princ "*"))
+    (update mcmc))
   (reset-counters mcmc)
-  (let ((result (make-ra-matrix :double 0 0 :capacity n)))
+  ;; draws
+  (let (result)
     (dotimes (i n)
+      (when *stop-mcmc*
+        (break))
       (update mcmc)
-      (add result (current-parameters mcmc)))
+      (let ((draw (current-parameters mcmc)))
+        (when (zerop i)
+          (setf result (make-array (list n (length draw))
+                                   :element-type (array-element-type draw))))
+        (setf (sub result i t) draw))
+      (when (and progress-indicator (zerop (rem i progress-indicator)))
+        (princ ".")))
+    (when progress-indicator
+      (terpri))
     result))
