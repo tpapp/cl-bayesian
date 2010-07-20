@@ -22,8 +22,9 @@
     :components
     ((:file "utilities")
      (:file "mcmc")
+     (:file "slice-sample")
      ;; (:file "polynomials")
      )))
   :depends-on
-  (:iterate :metabang-bind :cl-utilities :anaphora :xarray :lla
-            :cl-random :tpapp-utils))
+  (:iterate :metabang-bind :anaphora :cl-random :tpapp-utils :cl-num-utils
+            :alexandria))
