@@ -58,8 +58,116 @@
 (defgeneric update-parameter-in-vector (mcmc parameter index)
   (:documentation "return the updated parameter for index i in an MCMC object"))
 
-(defgeneric current-parameters (mcmc)
-  (:documentation "return the parameters"))
+(defgeneric current-parameters (mcmc &optional query)
+  (:documentation "Return the parameters, usually as a vector.  If QUERY is
+  given, return corresponding information.  Eg :IX can return the index
+  corresponding to the parameters, etc."))
+
+(defmacro define-current-parameters (class &rest names)
+  `(defmethod current-parameters ((mcmc ,class) &optional query)
+     (case query
+       (:ix (apply #'conforming-ix mcmc ',names))
+       (t (bind (((:slots-r/o ,@names) mcmc))
+            (concat ,@names))))))
+
+;; (defmacro define-mcmc (class-name direct-superclasses slots &rest options)
+;;   "Example:
+;;   (define-mcmc model ()
+;;     ((x :parameter (atom :updater gibbs))
+;;      (y :parameter (atom :updater metropolis))))"
+;;   ;; NOTES: currently, metropolis vector updaters are sharing a counter
+;;   (let (parameters                ; symbols
+;;         vector-parameters         ; symbols
+;;         counters                  ; slot name, original var name pairs
+;;         propdists)                ; slot name, original var name pairs
+;;     (labels ((process-parameter-specifier (name parameter-specifier)
+;;                "Process parameter specifier."
+;;                (bind (((type &key (updater :gibbs)
+;;                              (counter 'counter counter-supplied-p)
+;;                              (propdist 'propdist propdist-supplied-p))
+;;                        (if (atom parameter-specifier)
+;;                            (list parameter-specifier)
+;;                            parameter-specifier)))
+;;                  (case type
+;;                    (atom)
+;;                    (vector
+;;                       (push name vector-parameters))
+;;                    (otherwise (error "parameter type ~a not recognized" type)))
+;;                  (push name parameters)
+;;                  (case updater
+;;                    ;; Gibbs: nothing needs to be done, just some sanity checks
+;;                    ((:gibbs :deterministic) 
+;;                       (when (or counter-supplied-p propdist-supplied-p)
+;;                         (error "Deterministic and Gibbs updaters don't ~
+;;                                 need a counter and/or updater-parameters")))
+;;                    ;; Metropolis
+;;                    (:metropolis
+;;                       (push (cons (make-symbol* name '- counter) name) counters)
+;;                       (push (cons (make-symbol* name '- propdist) name) propdists))
+;;                    (otherwise
+;;                       (error "updater ~a not recognized" updater)))))
+;;              (process-slot-specifier (slot-specifier)
+;;                "Extract parameter definitions, return filtered slot
+;;                specifier with MCMC-specific keyword pairs removed."
+;;                (bind (((slot-name &rest options) slot-specifier)
+;;                       (pairs (group options 2))
+;;                       (parameter (find :parameter pairs :key #'first)))
+;;                  (awhen (has-duplicates? pairs :key #'first)
+;;                    (error "Key ~A occurs multiple times in slot specifier ~A."
+;;                           (first pairs) slot-specifier))
+;;                  (when parameter
+;;                    (process-parameter-specifier slot-name (second parameter)))
+;;                  (cons slot-name (mapcan (lambda (pair)
+;;                                            (if (eq (first pair) :parameter)
+;;                                                nil
+;;                                                pair))
+;;                                          pairs))))
+;;              (generate-counter-slot (counter)
+;;                "Generate the slot definition for a counter."
+;;                (let ((name (car counter))
+;;                      (documentation (format nil "counter for ~A" (cdr counter))))
+;;                `(,name :accessor ,name :documentation ,documentation
+;;                        :initform (make-instance 'acceptance-counter))))
+;;              (generate-propdist-slot (propdist)
+;;                "Generate the slot definition for a proposal distribution."
+;;                (let ((name (car propdist))
+;;                      (documentation (format nil "parameter(s) of the proposal ~
+;;                                                  distribution for ~A" 
+;;                                             (cdr propdist))))
+;;                `(,name :accessor ,name :documentation ,documentation
+;;                        :initarg ,(make-keyword name)))))
+;;       (check-type class-name symbol)
+;;       `(progn
+;;          ;; class definition
+;;          (defclass ,class-name (mcmc ,@direct-superclasses)
+;;            ,(concatenate 'list
+;;              (mapcar #'process-slot-specifier (reverse slots))
+;;              (mapcar #'generate-counter-slot counters)
+;;              (mapcar #'generate-propdist-slot propdists))
+;;            ,@options)
+;;          ;; reset
+;;          (defmethod reset-counters ((mcmc ,class-name))
+;;            ,@(mapcar (lambda (counter)
+;;                        `(setf (,(car counter) mcmc)
+;;                               (make-instance 'acceptance-counter)))
+;;                      counters)
+;;            (values))
+;;          ;; update all variables
+;;          (defmethod update ((mcmc ,class-name))
+;;            (dolist (parameter ',parameters)
+;;              (update-parameter mcmc parameter))
+;;            (values))
+;;          ;; updaters for vectors
+;;          ,@(mapcar (lambda (name)
+;;                      `(defmethod update-parameter ((mcmc ,class-name)
+;;                                                    (parameter (eql ',name)))
+;;                         (bind (((:slots-read-only ,name) mcmc))
+;;                           (dotimes (i (length ,name))
+;;                             (setf (aref ,name i)
+;;                                   (update-parameter-in-vector mcmc ',name i)))
+;;                           ,name)))
+;;                    vector-parameters)))))
+
 
 (defmacro define-mcmc (class-name direct-superclasses slots &rest options)
   "Example:
@@ -67,97 +175,29 @@
     ((x :parameter (atom :updater gibbs))
      (y :parameter (atom :updater metropolis))))"
   ;; NOTES: currently, metropolis vector updaters are sharing a counter
-  (let (parameters                ; symbols
-        vector-parameters         ; symbols
-        counters                  ; slot name, original var name pairs
-        propdists)                ; slot name, original var name pairs
-    (labels ((process-parameter-specifier (name parameter-specifier)
-               "Process parameter specifier."
-               (bind (((type &key (updater :gibbs)
-                             (counter 'counter counter-supplied-p)
-                             (propdist 'propdist propdist-supplied-p))
-                       (if (atom parameter-specifier)
-                           (list parameter-specifier)
-                           parameter-specifier)))
-                 (case type
-                   (atom)
-                   (vector
-                      (push name vector-parameters))
-                   (otherwise (error "parameter type ~a not recognized" type)))
-                 (push name parameters)
-                 (case updater
-                   ;; Gibbs: nothing needs to be done, just some sanity checks
-                   ((:gibbs :deterministic) 
-                      (when (or counter-supplied-p propdist-supplied-p)
-                        (error "Deterministic and Gibbs updaters don't ~
-                                need a counter and/or updater-parameters")))
-                   ;; Metropolis
-                   (:metropolis
-                      (push (cons (make-symbol* name '- counter) name) counters)
-                      (push (cons (make-symbol* name '- propdist) name) propdists))
-                   (otherwise
-                      (error "updater ~a not recognized" updater)))))
-             (process-slot-specifier (slot-specifier)
-               "Extract parameter definitions, return filtered slot
-               specifier with MCMC-specific keyword pairs removed."
-               (bind (((slot-name &rest options) slot-specifier)
-                      (pairs (group options 2))
-                      (parameter (find :parameter pairs :key #'first)))
-                 (awhen (has-duplicates? pairs :key #'first)
-                   (error "Key ~A occurs multiple times in slot specifier ~A."
-                          (first pairs) slot-specifier))
-                 (when parameter
-                   (process-parameter-specifier slot-name (second parameter)))
-                 (cons slot-name (mapcan (lambda (pair)
-                                           (if (eq (first pair) :parameter)
-                                               nil
-                                               pair))
-                                         pairs))))
-             (generate-counter-slot (counter)
-               "Generate the slot definition for a counter."
-               (let ((name (car counter))
-                     (documentation (format nil "counter for ~A" (cdr counter))))
-               `(,name :accessor ,name :documentation ,documentation
-                       :initform (make-instance 'acceptance-counter))))
-             (generate-propdist-slot (propdist)
-               "Generate the slot definition for a proposal distribution."
-               (let ((name (car propdist))
-                     (documentation (format nil "parameter(s) of the proposal ~
-                                                 distribution for ~A" 
-                                            (cdr propdist))))
-               `(,name :accessor ,name :documentation ,documentation
-                       :initarg ,(make-keyword name)))))
-      (check-type class-name symbol)
-      `(progn
-         ;; class definition
-         (defclass ,class-name (mcmc ,@direct-superclasses)
-           ,(concatenate 'list
-             (mapcar #'process-slot-specifier (reverse slots))
-             (mapcar #'generate-counter-slot counters)
-             (mapcar #'generate-propdist-slot propdists))
-           ,@options)
-         ;; reset
-         (defmethod reset-counters ((mcmc ,class-name))
-           ,@(mapcar (lambda (counter)
-                       `(setf (,(car counter) mcmc)
-                              (make-instance 'acceptance-counter)))
-                     counters)
-           (values))
-         ;; update all variables
+  (check-type class-name symbol)
+  (iter
+    (for slot :in slots)
+    (bind (((slot-name &rest slot-spec) slot))
+      (aif (getf slot-spec :parameter)
+           (progn
+             (collect (cons slot-name it) :into parameters)
+             (collect (cons slot-name (remove-from-plist slot-spec :parameter))
+               :into filtered-slots))
+           (collect slot :into filtered-slots)))
+    (finally
+     (return
+       `(progn
+          ;; class definition
+          (defclass ,class-name (mcmc ,@direct-superclasses)
+            ,filtered-slots
+            ,@options)
+          ;; updater
          (defmethod update ((mcmc ,class-name))
-           (dolist (parameter ',parameters)
+           (dolist (parameter ',(mapcar #'car parameters))
              (update-parameter mcmc parameter))
-           (values))
-         ;; updaters for vectors
-         ,@(mapcar (lambda (name)
-                     `(defmethod update-parameter ((mcmc ,class-name)
-                                                   (parameter (eql ',name)))
-                        (bind (((:slots-read-only ,name) mcmc))
-                          (dotimes (i (length ,name))
-                            (setf (aref ,name i)
-                                  (update-parameter-in-vector mcmc ',name i)))
-                          ,name)))
-                   vector-parameters)))))
+           (values)))))))
+
 
 
 ;;;;
