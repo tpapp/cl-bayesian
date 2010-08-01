@@ -55,8 +55,8 @@
 (defgeneric update-parameter (mcmc parameter)
   (:documentation "return the updated parameter in an MCMC object"))
 
-(defgeneric update-parameter-in-vector (mcmc parameter index)
-  (:documentation "return the updated parameter for index i in an MCMC object"))
+;; (defgeneric update-parameter-in-vector (mcmc parameter index)
+;;   (:documentation "return the updated parameter for index i in an MCMC object"))
 
 (defgeneric current-parameters (mcmc &optional query)
   (:documentation "Return the parameters, usually as a vector.  If QUERY is
@@ -172,9 +172,8 @@
 (defmacro define-mcmc (class-name direct-superclasses slots &rest options)
   "Example:
   (define-mcmc model ()
-    ((x :parameter (atom :updater gibbs))
-     (y :parameter (atom :updater metropolis))))"
-  ;; NOTES: currently, metropolis vector updaters are sharing a counter
+    ((x :parameter t)
+     (y :parameter t)))"
   (check-type class-name symbol)
   (iter
     (for slot :in slots)
@@ -196,9 +195,8 @@
          (defmethod update ((mcmc ,class-name))
            (dolist (parameter ',(mapcar #'car parameters))
              (update-parameter mcmc parameter))
-           (values)))))))
-
-
+           (values))
+         (defmethod reset-counters ((mcmc ,class-name))))))))
 
 ;;;;
 ;;;;  Utility functions for defining updaters.
@@ -283,7 +281,7 @@ Return the new value, and ACCEPTED? as the second value."
 (defparameter *stop-mcmc* nil)
 
 (defun run-mcmc (mcmc n &key (burn-in (max (floor n 10) 1000))
-                 (progress-indicator (floor n 80)))
+                 (progress-indicator (max 1 (floor n 100))))
   (setf *stop-mcmc* nil)
   ;; burn-in
   (dotimes (i burn-in)
