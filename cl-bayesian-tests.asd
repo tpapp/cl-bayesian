@@ -20,7 +20,7 @@
     "tests"
     :pathname #P"tests/"
     :components
-    ((:file "diagnostics-tests"))))
+    ((:file "chains-tests"))))
   :depends-on
   (:iterate :metabang-bind :anaphora :lla :cl-random :tpapp-utils :cl-num-utils
             :alexandria :lift))

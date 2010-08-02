@@ -13,9 +13,10 @@
    ;; mcmc
 
    acceptance-counter acceptance-ratio increment-counter mcmc reset-counters
-   update update-parameter current-parameters define-current-parameters
-   define-mcmc define-updater define-metropolis-updater
-   log-posterior-ratio metropolis-step* metropolis-step run-mcmc *stop-mcmc*
+   update update-parameter current-parameters parameters-ix 
+   define-current-parameters define-mcmc define-updater
+   define-metropolis-updater log-posterior-ratio metropolis-step*
+   metropolis-step run-mcmc *stop-mcmc*
 
    ;; slice-sample
 
@@ -25,8 +26,9 @@
    
    variance-distribution
 
-   ;; diagnostics
+   ;; chains
 
-   potential-scale-reduction
+   mcmc-chains mcmc-class initargs parameters-ix chains burn-in run-mcmc-chains
+   psrf chains-psrf pool-mcmc-chains
 
    ))

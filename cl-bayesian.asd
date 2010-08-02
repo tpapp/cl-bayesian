@@ -24,7 +24,7 @@
      (:file "mcmc")
      (:file "slice-sampling")
      (:file "samplers")
-     (:file "diagnostics")
+     (:file "chains")
      ;; (:file "polynomials")
      )))
   :depends-on
