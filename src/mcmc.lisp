@@ -58,17 +58,19 @@
 ;; (defgeneric update-parameter-in-vector (mcmc parameter index)
 ;;   (:documentation "return the updated parameter for index i in an MCMC object"))
 
-(defgeneric current-parameters (mcmc &optional query)
-  (:documentation "Return the parameters, usually as a vector.  If QUERY is
-  given, return corresponding information.  Eg :IX can return the index
-  corresponding to the parameters, etc."))
+(defgeneric current-parameters (mcmc)
+  (:documentation "Return the parameters, usually as a vector."))
+
+(defgeneric parameters-ix (mcmc)
+  (:documentation "Return the index corresponding to the parameter vector."))
 
 (defmacro define-current-parameters (class &rest names)
-  `(defmethod current-parameters ((mcmc ,class) &optional query)
-     (case query
-       (:ix (apply #'conforming-ix mcmc ',names))
-       (t (bind (((:slots-r/o ,@names) mcmc))
-            (concat ,@names))))))
+  `(progn
+     (defmethod current-parameters ((mcmc ,class))
+      (bind (((:slots-r/o ,@names) mcmc))
+        (concat ,@names)))
+     (defmethod parameters-ix ((mcmc ,class))
+       (apply #'conforming-ix mcmc ',names))))
 
 ;; (defmacro define-mcmc (class-name direct-superclasses slots &rest options)
 ;;   "Example:
@@ -281,28 +283,34 @@ Return the new value, and ACCEPTED? as the second value."
 (defparameter *stop-mcmc* nil)
 
 (defun run-mcmc (mcmc n &key (burn-in (max (floor n 10) 1000))
-                 (progress-indicator (max 1 (floor n 100))))
+                 (progress-indicator (max 1 (floor n 80)))
+                 (thin 1))
   (setf *stop-mcmc* nil)
   ;; burn-in
-  (dotimes (i burn-in)
+  (dotimes (index burn-in)
     (when *stop-mcmc*
       (break))
-    (when (and progress-indicator (zerop (rem i progress-indicator)))
+    (when (and progress-indicator (zerop (rem index progress-indicator)))
       (princ "*"))
     (update mcmc))
   (reset-counters mcmc)
   ;; draws
   (let (result)
-    (dotimes (i n)
+    (dotimes (index n)
       (when *stop-mcmc*
         (break))
       (update mcmc)
-      (let ((draw (current-parameters mcmc)))
-        (when (zerop i)
-          (setf result (make-array (list n (length draw))
-                                   :element-type (array-element-type draw))))
-        (setf (sub result i t) draw))
-      (when (and progress-indicator (zerop (rem i progress-indicator)))
+      ;; save thinned draw
+      (bind (((:values row-index remainder) (floor index thin)))
+        (when (zerop remainder)
+          (let ((draw (current-parameters mcmc)))
+            ;; first draw
+            (when (zerop index)
+              (setf result (make-array (list (ceiling n thin) (length draw))
+                                       :element-type (array-element-type draw))))
+            (setf (sub result row-index t) draw))))
+      ;; progress indicator
+      (when (and progress-indicator (zerop (rem index progress-indicator)))
         (princ ".")))
     (when progress-indicator
       (terpri))
