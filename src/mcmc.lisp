@@ -64,13 +64,35 @@
 (defgeneric parameters-ix (mcmc)
   (:documentation "Return the index corresponding to the parameter vector."))
 
-(defmacro define-current-parameters (class &rest names)
+(defun conforming-ix (instance &rest slots)
+  "Return an index conforming to the slots of INSTANCE."
+  (labels ((sub-ix-spec (object)
+             (typecase object
+               (sequence (if (some (lambda (elt) (typep elt 'sequence)) object)
+                             (map 'list #'sub-ix-spec object)
+                             (length object)))
+               (array (coerce (array-dimensions object) 'vector))
+               (otherwise nil))))
+    (make-ix (mapcar (lambda (slot)
+                       `(,slot ,(sub-ix-spec (slot-value instance slot))))
+                     slots))))
+
+(defmacro define-current-parameters (class &rest slots)
+  "Define CURRENT-PARAMETERS and PARAMETERS-IX methods, collecting the content
+of the given slots as a (flat) vector."
   `(progn
      (defmethod current-parameters ((mcmc ,class))
-      (bind (((:slots-r/o ,@names) mcmc))
-        (concat ,@names)))
+       (labels ((c (vectors)
+                  (apply #'concat
+                         (map 'list (lambda (v)
+                                      (if (vectorp v)
+                                          (c v)
+                                          (vector v)))
+                              vectors))))
+         (bind (((:slots-r/o ,@slots) mcmc))
+           (c (vector ,@slots)))))
      (defmethod parameters-ix ((mcmc ,class))
-       (apply #'conforming-ix mcmc ',names))))
+       (apply #'conforming-ix mcmc ',slots))))
 
 ;; (defmacro define-mcmc (class-name direct-superclasses slots &rest options)
 ;;   "Example:
