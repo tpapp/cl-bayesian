@@ -28,7 +28,8 @@
 
    ;; chains
 
-   mcmc-chains mcmc-class initargs parameters-ix chains burn-in run-mcmc-chains
-   psrf chains-psrf pool-mcmc-chains
+   mcmc-chains mcmc-class initargs parameters-ix chains burn-in 
+   pooled-parameters run-mcmc-chains psrf chains-psrf
+   calculate-pooled-parameters
 
    ))

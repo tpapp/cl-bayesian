@@ -11,11 +11,13 @@
              "Initial arguments used for creating MCMC instances.")
    (parameters-ix :accessor parameters-ix :initarg :parameters-ix
                   :documentation "Index for the parameter vectors.")
-   (chains :accessor chains :initarg :chains
+   (chains :accessor chains :initarg :chains :type simple-vector
            :documentation "Matrices holding the chains.")
    (burn-in :accessor burn-in :initarg :burn-in
             :documentation "Burn-in, used to discard start of the sequence
-            before inference.")))
+            before inference.")
+   (pooled-parameters :accessor pooled-parameters :documentation
+                      "Pooled parameters.")))
 
 (defun run-mcmc-chains (m n mcmc-class initargs &key (burn-in (floor n 2))
                         (thin 1))
@@ -99,21 +101,26 @@ Gelman (1998)."
                   (psrf sequences))))))
     (values limits psrf-matrix)))
 
-(defun pool-mcmc-chains (mcmc-chains &key (start (burn-in mcmc-chains))
-                         (end (nrow (aref (chains mcmc-chains) 0))))
+(defun calculate-pooled-parameters (mcmc-chains &key (start (burn-in mcmc-chains))
+                                    (end (nrow (aref (chains mcmc-chains) 0))))
   "Combine MCMC chains into a single matrix, preserving column structure.
 START and END mark the iterations used."
   (bind ((chain-length (- end start))
          ((:slots-r/o chains) mcmc-chains)
          (m (length chains))
          (first-chain (aref chains 0))
-         (pooled-chain (make-array 
+         (pooled (make-array 
                         (list (* chain-length m) (ncol first-chain))
                         :element-type (array-element-type first-chain))))
     (iter
       (for chain :in-vector chains)
       (for end-row :from chain-length :by chain-length)
       (for start-row :previous end-row :initially 0)
-      (setf (sub pooled-chain (cons start-row end-row) t)
-            (sub chain (cons start end) t)))
-    pooled-chain))
+      (setf (sub pooled (si start-row end-row) t)
+            (sub chain (si start end) t)))
+    pooled))
+
+(defmethod slot-unbound (class (instance mcmc-chains)
+                         (slot-name (eql 'pooled-parameters)))
+  (setf (slot-value instance 'pooled-parameters)
+        (calculate-pooled-parameters instance)))
