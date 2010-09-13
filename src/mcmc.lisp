@@ -74,7 +74,7 @@
                (array (coerce (array-dimensions object) 'vector))
                (otherwise nil))))
     (make-ix (mapcar (lambda (slot)
-                       `(,slot ,(sub-ix-spec (slot-value instance slot))))
+                       (cons slot (sub-ix-spec (slot-value instance slot))))
                      slots))))
 
 (defmacro define-current-parameters (class &rest slots)
