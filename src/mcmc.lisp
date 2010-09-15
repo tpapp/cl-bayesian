@@ -321,7 +321,6 @@ Return the new value, and ACCEPTED? as the second value."
     (dotimes (index n)
       (when *stop-mcmc*
         (break))
-      (update mcmc)
       ;; save thinned draw
       (bind (((:values row-index remainder) (floor index thin)))
         (when (zerop remainder)
@@ -331,6 +330,7 @@ Return the new value, and ACCEPTED? as the second value."
               (setf result (make-array (list (ceiling n thin) (length draw))
                                        :element-type (array-element-type draw))))
             (setf (sub result row-index t) draw))))
+      (update mcmc)
       ;; progress indicator
       (when (and progress-indicator (zerop (rem index progress-indicator)))
         (princ ".")))
