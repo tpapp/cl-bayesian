@@ -11,8 +11,11 @@
              "Initial arguments used for creating MCMC instances.")
    (parameters-ix :accessor parameters-ix :initarg :parameters-ix
                   :documentation "Index for the parameter vectors.")
-   (chains :accessor chains :initarg :chains :type simple-vector
-           :documentation "Matrices holding the chains.")
+   (chains :accessor chains :initarg :chains :documentation
+           "Chains, always holding the current state.")
+   (chain-results :accessor chain-results :initarg :chain-results
+                  :type simple-vector
+                  :documentation "Matrices holding the chain-results.")
    (burn-in :accessor burn-in :initarg :burn-in
             :documentation "Burn-in, used to discard start of the sequence
             before inference.")
@@ -22,20 +25,25 @@
 (defun run-mcmc-chains (m n mcmc-class initargs &key (burn-in (floor n 2))
                         (thin 1))
   "Run M MCMC chains, each of length N, with given class and initargs."
-  (let* (parameters-ix
-         (chains (iter
-                   (for chain-index :below m)
-                   (format t "Running chain ~A/~A~%" chain-index (1- m))
-                   (let ((mcmc (apply #'make-instance mcmc-class initargs)))
-                     (collecting (run-mcmc mcmc n :burn-in 0 :thin thin)
-                                 :result-type vector)
-                     (when (first-iteration-p)
-                       (setf parameters-ix (parameters-ix mcmc)))))))
-    (make-instance 'mcmc-chains :chains chains
-                   :initargs initargs
-                   :parameters-ix parameters-ix
-                   :mcmc-class mcmc-class
-                   :burn-in burn-in)))
+  (iter
+    (with parameters-ix)
+    (for chain-index :below m)
+    (format t "Running chain ~A/~A~%" chain-index (1- m))
+    (let ((mcmc (apply #'make-instance mcmc-class initargs)))
+      (collecting (run-mcmc mcmc n :burn-in 0 :thin thin)
+                  :result-type vector :into chain-results)
+      (collecting mcmc :result-type vector :into chains)
+      (when (first-iteration-p)
+        (setf parameters-ix (parameters-ix mcmc)))
+      (finally 
+       (return
+         (make-instance 'mcmc-chains
+                        :chains chains
+                        :chain-results chain-results
+                        :initargs initargs
+                        :parameters-ix parameters-ix
+                        :mcmc-class mcmc-class
+                        :burn-in burn-in))))))
 
 (defun psrf (sequences &key (confidence 0.975d0) skip-length-check?)
   "Estimate the potential scale reduction factor.  Algorithm is from Gelman and
@@ -81,8 +89,8 @@ Gelman (1998)."
 
 (defun chains-psrf (mcmc-chains &key (divisions 20) (burn-in-fraction 2))
   "Calculate the potential scale reduction factor for "
-  (bind (((:slots-r/o chains) mcmc-chains)
-         ((n k) (array-dimensions (aref chains 0)))
+  (bind (((:slots-r/o chain-results) mcmc-chains)
+         ((n k) (array-dimensions (aref chain-results 0)))
          (limits (iter
                    (for index :from 1 :to divisions)
                    (collecting (ceiling (* n index) divisions)
@@ -90,7 +98,7 @@ Gelman (1998)."
          (psrf-matrix (make-array (list divisions k))))
     (dotimes (param-index k)
       (let ((sequences (map 'vector (lambda (chain) (sub chain t param-index))
-                            chains)))
+                            chain-results)))
         (iter
           (for limit :in-vector limits :with-index limit-index)
           (let* ((start (floor limit burn-in-fraction))
@@ -102,18 +110,18 @@ Gelman (1998)."
     (values limits psrf-matrix)))
 
 (defun calculate-pooled-parameters (mcmc-chains &key (start (burn-in mcmc-chains))
-                                    (end (nrow (aref (chains mcmc-chains) 0))))
+                                    (end (nrow (aref (chain-results mcmc-chains) 0))))
   "Combine MCMC chains into a single matrix, preserving column structure.
 START and END mark the iterations used."
   (bind ((chain-length (- end start))
-         ((:slots-r/o chains) mcmc-chains)
-         (m (length chains))
-         (first-chain (aref chains 0))
+         ((:slots-r/o chain-results) mcmc-chains)
+         (m (length chain-results))
+         (first-chain (aref chain-results 0))
          (pooled (make-array 
                         (list (* chain-length m) (ncol first-chain))
                         :element-type (array-element-type first-chain))))
     (iter
-      (for chain :in-vector chains)
+      (for chain :in-vector chain-results)
       (for end-row :from chain-length :by chain-length)
       (for start-row :previous end-row :initially 0)
       (setf (sub pooled (si start-row end-row) t)
