@@ -83,11 +83,14 @@ of the given slots as a (flat) vector."
   `(progn
      (defmethod current-parameters ((mcmc ,class))
        (labels ((c (vectors)
+                  ;; concatenates vectors recursively
                   (apply #'concat
                          (map 'list (lambda (v)
-                                      (if (vectorp v)
-                                          (c v)
-                                          (vector v)))
+                                      (typecase v
+                                        (vector (c v))
+                                        (array (displace-array 
+                                                v (array-total-size v)))
+                                        (otherwise (vector v))))
                               vectors))))
          (bind (((:slots-r/o ,@slots) mcmc))
            (c (vector ,@slots)))))
