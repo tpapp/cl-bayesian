@@ -19,7 +19,7 @@
     ((:file "utilities")
      (:file "mcmc")
      (:file "slice-sampling")
-     ;; (:file "samplers")
+     (:file "samplers")
      (:file "chains")
      ;; (:file "polynomials")
      )))
