@@ -2,8 +2,6 @@
 
 (in-package #:cl-bayesian)
 
-(declaim (optimize debug))
-
 (defclass mcmc-chains ()
   ((mcmc-class :accessor mcmc-class :initarg :mcmc-class :documentation
                "Class used for creating MCMC instances.")
