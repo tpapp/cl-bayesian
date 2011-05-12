@@ -5,15 +5,15 @@
 (defun slice-sample-so (x g &key (w 1d0) (max-iter 100) lower upper
                         (gx (funcall g x)))
   "Slice sampling, starting at X, using the stepping out algorithm of
-Neal (2003, especially Fig 3 and 5).  Return the new sample point and the value
-of the log density at that point.  G is the log of the probability (+ constant),
-and may return NIL when the probability is zero.  W is the starting width.
-MAX-ITER, LOWER and UPPER define maximum number of iterations, and lower/upper
-bounds for X.  When NIL, these three are considered as not applicable and are
-not used to terminate the algorithm.  In particular, when bounds are given, G is
-never called outside these."
+Neal (2003, especially Fig 3 and 5).  Return the new sample point and the
+value of the log density at that point.  G is the log of the probability (+
+constant), and may return NIL when the probability is zero.  W is the starting
+width.  MAX-ITER, LOWER and UPPER define maximum number of iterations, and
+lower/upper bounds for X.  When NIL, these three are considered as not
+applicable and are not used to terminate the algorithm.  In particular, when
+bounds are given, G is never called outside these."
   (assert gx () "p(x) = 0")
-  (bind ((log-y (- gx (rv:draw-standard-exponential)))
+  (bind ((log-y (- gx (draw-standard-exponential)))
          (u (random 1d0))
          (left (- x (* w u)))
          (right (+ left w))
@@ -45,9 +45,9 @@ never called outside these."
       (let* ((x1 (+ left (random (- right left))))
              (gx1 (funcall g x1)))
         (cond
-          ;; note: we use <= for termination, following the code of Neal instead
-          ;; of the paper, to ensure termination is the interval is shrunk to
-          ;; the original point X
+          ;; note: we use <= for termination, following the code of Neal
+          ;; instead of the paper, to ensure termination if the interval is
+          ;; shrunk to the original point X
           ((and gx1 (<= log-y gx1)) (return (values x1 gx1)))
           ;; just shrink interval
           ((< x1 x) (setf left x1))
