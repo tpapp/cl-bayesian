@@ -1,4 +1,4 @@
-(defsystem #:cl-bayesian-tests
+(defsystem cl-bayesian-tests
   :description "Unit tests for the CL-BAYESIAN library."
   :author "Tamas K Papp"
   :license "Same as CL-BAYESIAN -- this is part of the latter."
@@ -20,7 +20,7 @@
     "tests"
     :pathname #P"tests/"
     :components
-    ((:file "chains-tests"))))
+    ((:file "chains"))))
   :depends-on
-  (:iterate :metabang-bind :anaphora :lla :cl-random :tpapp-utils :cl-num-utils
-            :alexandria :lift))
+  (iterate metabang-bind anaphora alexandria lift cl-num-utils lla cl-random
+   cl-random-tests))

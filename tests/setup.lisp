@@ -3,7 +3,7 @@
 (in-package #:cl-bayesian-tests)
 
 (deftestsuite cl-bayesian-tests () ()
-  (:equality-test #'lla=))
+  (:equality-test #'==))
 
 ;; EXTERNAL
 
