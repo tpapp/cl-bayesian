@@ -23,10 +23,9 @@
     ((:file "utilities")
      (:file "mcmc")
      (:file "slice-sampling")
-     (:file "samplers")
+     ;; (:file "samplers")
      (:file "chains")
      ;; (:file "polynomials")
      )))
   :depends-on
-  (:iterate :metabang-bind :anaphora :lla :cl-random :tpapp-utils :cl-num-utils
-            :alexandria))
+  (iterate metabang-bind anaphora alexandria cl-num-utils lla cl-random))

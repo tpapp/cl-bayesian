@@ -1,11 +1,10 @@
 (in-package #:cl-bayesian-asd)
 
 (defpackage #:cl-bayesian
-    (:use :common-lisp :iterate :bind :anaphora :tpapp-utils :cl-num-utils
-          :alexandria :lla :cl-random)
-  (:shadowing-import-from :iterate :collecting :collect)
-  (:shadowing-import-from :cl-random :variance)
-  (:shadowing-import-from :cl-num-utils :mean :xor) ; also in alexandria
+  (:use :common-lisp :iterate :bind :anaphora :cl-num-utils :alexandria :lla
+        :cl-random :lla)
+  (:shadowing-import-from cl-num-utils
+                          mean variance xor) ; also in alexandria
   (:export
    
    ;; utilities - nothing is exported
@@ -24,7 +23,7 @@
 
    ;; samplers
    
-   variance-distribution
+   variance-distribution lr-kv-dummies lr-kv
 
    ;; chains
 
