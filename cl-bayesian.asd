@@ -2,7 +2,8 @@
   :description ""
   :author "Tamas K Papp"
   :license "LLGPL"
-  :serial t 
+  :in-order-to ((test-op (test-op cl-bayesian-tests)))
+  :serial t
   :components
   ((:module 
     "package-init"
