@@ -18,11 +18,11 @@
   MAKE-DATA-FRAME.  Should be constant for a given model (depending of course
   on data dimensions, etc)."))
 
-(defgeneric reset-mcmc (mcmc)
+(defgeneric reset (mcmc)
   ;; ?? do I need this?
   (:documentation "Reset counters etc."))
 
-(defun run-mcmc (mcmc n &key (burn-in (max (floor n 10) 1000))
+(defun run (mcmc n &key (burn-in (max (floor n 10) 1000))
                  (thin 1) (stream *standard-output*) 
                  (progress-indicator (max 1 (floor n 80))))
   "Run MCMC, keeping N draws.  Parameters govern burn-in (a sensible value is
