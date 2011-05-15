@@ -39,3 +39,24 @@
          (y-t (e/ y sd)))
     (ensure-same mean (solve (mm t x-t) (mm (transpose x-t) y-t)))
     (ensure-same variance (invert (mm t x-t)))))
+
+(addtest (samplers-tests)
+  multivariate-normal-model
+  (bind ((*lift-equality-test* #'==)
+         (k 2)
+         (n 10)
+         (y (filled-array (list (* 2 n) k) (curry #'random 10d0)
+                          'double-float))
+         ;; single step
+         (p2 (multivariate-normal-model y))
+         ;; two steps
+         (p1 (multivariate-normal-model (sub y (si 0 n) t)))
+         (p2-1 (multivariate-normal-model (sub y (si n 0) t)
+                                          :prior p1)))
+    (ensure-same (mean p2) (mean p2-1))
+    (ensure-same (nu p2) (nu p2-1))
+    (ensure-same (inverse-scale p2) (mean p2-1))
+    (ensure-same (kappa p2) (nu p2-1))
+
+    ))
+  

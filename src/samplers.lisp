@@ -46,3 +46,46 @@ LR-KV-DUMMIES to generate dummy observations from a prior."
          ((:values beta nil nil qr)
           (least-squares y-transformed x-transformed :method :qr)))
     (r-multivariate-normal beta (invert-xx qr))))
+
+;;; multivariate normal model
+;;;
+;;; 
+
+(defclass multivariate-normal-model ()
+  ((inverse-scale :accessor inverse-scale :initarg :inverse-scale)
+   (nu :reader nu :initarg :nu :documentation "Degrees of freedom.")
+   (kappa :reader kappa :initarg :kappa :documentation "Number of
+   observations (including dummies from prior, may be a fraction).")
+   (mean :reader mean :initarg :mean :documentation "Posterior mean."))
+  (:documentation "Random variable representing the posterior for a
+  multivariate normal distribution estimated with unknown variance, reference
+  or conjugate prior.  Second values return Sigma, the variance matrix."))
+
+(defun multivariate-normal-model (y &key prior)
+  "Estimate a multivariate normal model.  See p85-88 of Bayesian Data
+Analysis, 2nd edition.  If prior is not given, it is the reference prior."
+  (declare (optimize debug))
+  (bind (((n nil) (array-dimensions y))
+         ((:values sse mean) (matrix-sse y))
+         (kappa n)
+         (nu n))
+    (when prior
+      (check-type prior multivariate-normal-model)
+      (let ((kappa0 (kappa prior))
+            (mean0 (mean prior)))
+        (incf kappa kappa0)
+        (incf nu (nu prior))
+        (setf sse (e+ sse
+                      (inverse-scale prior)
+                      (mm (e- mean mean0) t
+                          (/ (* kappa0 n) kappa))))
+        (setf mean (e+ (e* (mean prior) (/ kappa0 kappa))
+                       (e* mean (/ n kappa))))))
+    (make-instance 'multivariate-normal-model :inverse-scale sse
+                   :nu nu :kappa kappa :mean mean)))
+
+(defmethod draw ((multivariate-normal-model multivariate-normal-model) &key)
+  (bind (((:slots-r/o inverse-scale nu kappa mean) multivariate-normal-model)
+         (sigma (draw (r-inverse-wishart nu inverse-scale))))
+    (values (draw (r-multivariate-normal mean sigma) :scale (/ kappa))
+            sigma)))
