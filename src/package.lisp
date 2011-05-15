@@ -1,4 +1,4 @@
-(defpackage cl-bayesian
+(defpackage cl-bayesian (:nicknames mcmc)
   (:use common-lisp iterate bind anaphora cl-num-utils alexandria lla 
         cl-random lla)
   (:shadowing-import-from cl-num-utils
@@ -9,11 +9,7 @@
 
    ;; mcmc
 
-   acceptance-counter acceptance-ratio increment-counter mcmc reset-counters
-   update update-parameter current-parameters parameters-ix 
-   define-current-parameters define-mcmc define-updater
-   define-metropolis-updater log-posterior-ratio metropolis-step*
-   metropolis-step run-mcmc *stop-mcmc*
+   update parameters parameters-index reset run
 
    ;; slice-sample
 
@@ -21,8 +17,9 @@
 
    ;; samplers
    
-   variance-distribution lr-kv-dummies lr-kv
-
+   variance-distribution lr-kv-dummies lr-kv multivariate-normal-model kappa
+   inverse-scale
+   
    ;; chains
 
    mcmc-chains mcmc-class initargs parameters-ix chains chain-results burn-in 
