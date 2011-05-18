@@ -84,8 +84,11 @@ Analysis, 2nd edition.  If prior is not given, it is the reference prior."
     (make-instance 'multivariate-normal-model :inverse-scale sse
                    :nu nu :kappa kappa :mean mean)))
 
-(defmethod draw ((multivariate-normal-model multivariate-normal-model) &key)
+(defmethod draw ((multivariate-normal-model multivariate-normal-model) &key
+                 as-distribution?)
   (bind (((:slots-r/o inverse-scale nu kappa mean) multivariate-normal-model)
-         (sigma (draw (r-inverse-wishart nu inverse-scale))))
-    (values (draw (r-multivariate-normal mean sigma) :scale (/ kappa))
-            sigma)))
+         (sigma (draw (r-inverse-wishart nu inverse-scale)))
+         (mean (draw (r-multivariate-normal mean sigma) :scale (/ kappa))))
+    (if as-distribution?
+        (r-multivariate-normal mean sigma)
+        (values mean sigma))))
