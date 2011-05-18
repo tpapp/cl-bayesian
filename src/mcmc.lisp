@@ -20,48 +20,74 @@
 
 (defgeneric reset (mcmc)
   ;; ?? do I need this?
-  (:documentation "Reset counters etc."))
+  (:documentation "Reset counters etc.")
+  (:method (object)                     ; do nothing
+    nil))
+
+(defun text-progress-bar (stream n &key
+                           (character #\*) (length 80)
+                           (deciles? t) (before "~&[") (after "]~%"))
+  "Return a closure that displays a progress bar when called with
+increments (defaults to 1).  When the second argument is T, index will be set
+to the given value (instead of a relative change).
+
+LENGTH determines the number of CHARACTERs to display (not including AFTER and
+BEFORE, which are displayed when the closure is first called and after the
+index reaches N, respectively).  When DECILES?, characters at every decile
+will be replaced by 0,...,9.
+
+When STREAM is NIL, nothing is displayed."
+  (unless stream
+    (return-from text-progress-bar (lambda ())))
+  (let* ((characters (aprog1 (make-string length :initial-element character)
+                       (when deciles?
+                         (loop for index :below 10 do
+                           (replace it (format nil "~d" index)
+                                    :start1 (floor (* index length) 10))))))
+         (index 0)
+         (position 0))
+    (lambda (&optional (increment 1) absolute?)
+      (when before
+        (format stream before)
+        (setf before nil))
+      (if absolute?
+          (progn
+            (assert (<= index increment) () "Progress bar can't rewind.")
+            (setf index increment))
+          (incf index increment))
+      (assert (<= index n) () "Index ran above total (~A > ~A)." index n)
+      (let ((target-position (floor (* index length) n)))
+        (loop while (< position target-position) do
+              (princ (aref characters position) stream)
+              (incf position)))
+      (when (and (= index n) after)
+        (format stream after)))))
 
 (defun run (mcmc n &key (burn-in (max (floor n 10) 1000))
-                 (thin 1) (stream *standard-output*) 
-                 (progress-indicator (max 1 (floor n 80))))
+            (thin 1) (stream *standard-output*) (progress-bar-length 80))
   "Run MCMC, keeping N draws.  Parameters govern burn-in (a sensible value is
 calculated by default), thinning (every THIN draw is kept), and output of a
 progress bar (if not desired, set PROGRESS-INDICATOR to NIL)."
-  (bind (((:flet progress-bar (indicator &optional index))
-          ;; print indicator with at each progress-bar iteration, use NIL for
-          ;; a line break
-          (when progress-indicator
-            (if indicator
-                (when (zerop (rem index progress-indicator))
-                  (princ indicator stream))
-                (terpri stream))))
-         matrix
-         ((:flet save-parameters (thinned-index parameters))
-          ;; save parameters at thinned-index, creating the matrix at the
-          ;; first draw
-          (unless matrix
-            (setf matrix (make-array (list (ceiling n thin)
-                                           (length parameters))
-                                     :element-type 
-                                     (array-element-type parameters))))
-           (replace (displace-subarray matrix thinned-index) parameters)))
+  (bind ((burn-in-progress (text-progress-bar stream burn-in :character #\.
+                                              :length progress-bar-length))
+         (mcmc-progress (text-progress-bar stream n :character #\*
+                                           :length progress-bar-length))
+         (sample (make-array (ceiling n thin))))
     ;; burn-in
     (dotimes (index burn-in)
-      (progress-bar #\* index)
+      (funcall burn-in-progress)
       (update mcmc))
-    (reset-mcmc mcmc)
+    (reset mcmc)
     ;; draws that are kept
     (dotimes (index n)
       ;; save thinned draw
       (bind (((:values thinned-index remainder) (floor index thin)))
         (when (zerop remainder)
-          (save-parameters thinned-index (parameters mcmc))))
-      (progress-bar #\. index)
+          (setf (aref sample thinned-index) (parameters mcmc))))
+      (funcall mcmc-progress)
       (update mcmc))
-    (progress-bar nil)
     ;; done
-    matrix))
+    sample))
 
 ;;;  Counter for Metropolis (and Metropolis-Hastings) steps.
 ;;;
