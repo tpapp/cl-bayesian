@@ -24,7 +24,7 @@
      ;; (:file "polynomials")
      )))
   :depends-on
-  (iterate metabang-bind anaphora alexandria cl-num-utils lla cl-random))
+  (iterate metabang-bind let-plus anaphora alexandria cl-num-utils lla cl-random))
 
 (defsystem cl-bayesian-tests
   :description "Unit tests for the CL-BAYESIAN library."

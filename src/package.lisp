@@ -1,6 +1,6 @@
 (defpackage cl-bayesian (:nicknames mcmc)
-  (:use common-lisp iterate bind anaphora cl-num-utils alexandria lla 
-        cl-random lla)
+  (:use common-lisp iterate bind let-plus anaphora cl-num-utils alexandria
+        lla cl-random lla)
   (:shadowing-import-from cl-num-utils
                           mean variance xor) ; also in alexandria
   (:export
