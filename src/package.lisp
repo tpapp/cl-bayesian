@@ -7,8 +7,17 @@
    
    ;; utilities - nothing is exported
 
+   ;; layout
+
+   extract layout-length parse-layout flatten-into named-layout
+   scalar-layout 
+
    ;; mcmc
 
+   initialize-chain parameters-layout scalar-parameters-layout model
+   update-chain state sample-chain reset-chain parameters scalar-parameters 
+   chain
+   
    update parameters parameters-index reset run
 
    ;; slice-sample

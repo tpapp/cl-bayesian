@@ -4,53 +4,104 @@
 ;;; 
 ;;; 
 
-(defgeneric update (mcmc)
+;;; model
+
+(defgeneric initialize-chain (model &key &allow-other-keys)
+  (:documentation "Initialize a Markov chain for drawing from MODEL, not
+  necessarily in a deterministic manner; other arguments may be used to
+  specify initial points or overdispersion."))
+
+(defgeneric parameters-layout (model)
+  (:documentation "Return the layout of parameters.  Has to be constant for
+  the same model, regardless of the chain or the state.  Note: this method
+  does not have to be defined for custom random-sample versions, see the
+  documentation of the latter."))
+
+(defgeneric scalar-parameters-layout (model)
+  (:documentation "Return a layout specification for scalar parameters.  Has
+  to be constant for the same model, regardless of the chain or the state."))
+
+(defgeneric model (object)
+  (:documentation "Return the corresponding model"))
+
+;;; chain
+
+(defgeneric update-chain (chain)
   (:documentation "Perform an MCMC update."))
 
-(defgeneric parameters (mcmc)
-  (:documentation "Return the current state of the chain as a vector.  The
-  vector may have a corresponding index that can be used for saving it in a
-  data-frame, see PARAMETERS-INDEX.  The returned value must have the same
-  number of elements and array element type regardless of the state."))
+(defgeneric state (chain)
+  (:documentation "Return the current state of the chain.  Note: see the
+  documentation of SAMPLE-CHAIN.)"))
 
-(defgeneric parameters-index (mcmc)
-  (:documentation "Return an object that can be used as the second argument of
-  MAKE-DATA-FRAME.  Should be constant for a given model (depending of course
-  on data dimensions, etc)."))
+(defgeneric sample-chain (chain n 
+                                &key burn-in thin stream progress-bar-length)
+  (:documentation "Sample N draws from CHAIN.  Parameters govern BURN-IN (a
+sensible value is calculated by default), thinning (every THIN draw is kept),
+and output of a progress bar (if not desired, set PROGRESS-INDICATOR to NIL).
 
-(defgeneric reset (mcmc)
+The generic function PARAMETERS and PARAMETERS-LAYOUT do not have to be
+defined for all chain classes, however, the default behavior of SAMPLE-CHAIN
+is to query the current state via PARAMETERS, assuming it is a vector, always
+of the same element-type, with the given layout."))
+
+(defgeneric reset-chain (chain)
   ;; ?? do I need this?
-  (:documentation "Reset counters etc.")
+  (:documentation "Reset acceptance counters etc.")
   (:method (object)                     ; do nothing
     nil))
 
+;;; sample
 
+(defgeneric parameters (sample index-specification keys &key copy?)
+  (:documentation "Return the requested parameter object at given INDEX from a
+  Markov chain.  May share structure unless COPY?."))
 
-(defun run (mcmc n &key (burn-in (max (floor n 10) 1000))
-            (thin 1) (stream *standard-output*) (progress-bar-length 80))
-  "Run MCMC, keeping N draws.  Parameters govern burn-in (a sensible value is
-calculated by default), thinning (every THIN draw is kept), and output of a
-progress bar (if not desired, set PROGRESS-INDICATOR to NIL)."
-  (bind ((burn-in-progress (text-progress-bar stream burn-in :character #\.
-                                              :length progress-bar-length))
-         (mcmc-progress (text-progress-bar stream n :character #\*
-                                           :length progress-bar-length))
-         (sample (make-array (ceiling n thin))))
+(defgeneric scalar-parameters (sample index &key copy?)
+  (:documentation "Return all scalar parameters as a vector.  Element type,
+  length and layout (see SCALAR-PARAMETERS-LAYOUT) have to be consistent for
+  chains initialized from the same model.  Does not necessarily contain all
+  parameters, only those that make sense as scalars."))
+
+;;; default implementation, using a flat matrix
+
+(defstruct+ (mcmc-sample)
+  "MCMC sample, arranged in a row-major matrix."
+  (model)
+  (elements))
+
+(defmethod sample-chain (chain n &key (burn-in (max (floor n 10) 1000))
+                         (thin 1) (stream *standard-output*)
+                         (progress-bar-length 80))
+  (let+ (((&fwrap burn-in-progress)
+          (text-progress-bar stream burn-in :character #\.
+                             :length progress-bar-length))
+         ((&fwrap mcmc-progress)
+          (text-progress-bar stream n :character #\*
+                             :length progress-bar-length))
+         sample)
     ;; burn-in
     (dotimes (index burn-in)
-      (funcall burn-in-progress)
-      (update mcmc))
-    (reset mcmc)
+      (burn-in-progress)
+      (update-chain chain))
+    (reset-chain chain)
     ;; draws that are kept
     (dotimes (index n)
       ;; save thinned draw
       (bind (((:values thinned-index remainder) (floor index thin)))
         (when (zerop remainder)
-          (setf (aref sample thinned-index) (parameters mcmc))))
-      (funcall mcmc-progress)
-      (update mcmc))
+          (let ((state (state chain)))
+            (unlessf sample
+                     (make-array (list (ceiling n thin) (length state))
+                                 :element-type
+                                 (array-element-type state)))
+            (replace (subarray sample thinned-index) state))))
+      (mcmc-progress)
+      (update-chain chain))
     ;; done
-    sample))
+    (make-mcmc-sample :model (model chain) :elements sample)))
+
+(defmethod scalar-parameters ((sample mcmc-sample) index &key copy?)
+  (subarray (mcmc-sample-elements sample) index :copy? copy?))
 
 ;;;  Counter for Metropolis (and Metropolis-Hastings) steps.
 ;;;
