@@ -87,7 +87,7 @@ of the same element-type, with the given layout."))
     ;; draws that are kept
     (dotimes (index n)
       ;; save thinned draw
-      (bind (((:values thinned-index remainder) (floor index thin)))
+      (let+ (((&values thinned-index remainder) (floor index thin)))
         (when (zerop remainder)
           (let ((state (state chain)))
             (unlessf sample

@@ -21,11 +21,11 @@
      (:file "mcmc")
      (:file "slice-sampling")
      (:file "samplers")
-     (:file "chains")
+     ;; (:file "chains")
      ;; (:file "polynomials")
      )))
   :depends-on
-  (iterate metabang-bind let-plus anaphora alexandria cl-num-utils lla cl-random))
+  (iterate let-plus anaphora alexandria cl-num-utils lla cl-random))
 
 (defsystem cl-bayesian-tests
   :description "Unit tests for the CL-BAYESIAN library."
@@ -51,5 +51,5 @@
     :components
     ((:file "chains"))))
   :depends-on
-  (iterate metabang-bind anaphora alexandria lift cl-num-utils lla cl-random
+  (iterate let-plus anaphora alexandria lift cl-num-utils lla cl-random
    cl-random-tests))

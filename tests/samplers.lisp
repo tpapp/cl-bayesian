@@ -7,9 +7,9 @@
 
 (addtest (samplers-tests)
   lr-kv-dummy-2phase
-  (bind ((k 2)
+  (let+ ((k 2)
          (n 10)
-         ((:values y x) (cl-random-tests:random-y-x (* 2 n) k))
+         ((&values y x) (cl-random-tests:random-y-x (* 2 n) k))
          (variance 7)
          ;; single step
          (p2 (lr-kv y x variance))
@@ -24,7 +24,7 @@
 
 (addtest (samplers-tests)
   lr-kv-small
-  (bind ((x (clo 1 1 :/
+  (let+ ((x (clo 1 1 :/
                  1 2
                  1 3
                  1 4
@@ -34,7 +34,7 @@
          (y (clo 2 2 3 4 5 6 6))
          (sd 19d0)
          (lr (lr-kv y x (expt sd 2)))
-         ((:accessors-r/o mean variance) lr)
+         ((&accessors-r/o mean variance) lr)
          (x-t (e/ x sd))
          (y-t (e/ y sd)))
     (ensure-same mean (solve (mm t x-t) (mm (transpose x-t) y-t)))
@@ -42,7 +42,7 @@
 
 (addtest (samplers-tests)
   multivariate-normal-model
-  (bind ((*lift-equality-test* #'==)
+  (let+ ((*lift-equality-test* #'==)
          (k 2)
          (n 10)
          (y (filled-array (list (* 2 n) k) (curry #'random 10d0)

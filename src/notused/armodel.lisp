@@ -31,7 +31,7 @@
 
 (defun complex-root->poly (complex-root)
   "Return polynomial for complex root."
-  (bind (((r . lambda) complex-root))
+  (let+ (((r . lambda) complex-root))
     (make-poly (* -2d0 r (cos (/ (* 2 pi) lambda)))
                (expt r 2))))
     
@@ -69,19 +69,19 @@ and probabilities for mass points (vector of 3 elements)."
 (define-updater (armodel real-roots :vector-index i) 
     (real-roots complex-roots real-probabilities variance x)
   "Updater for real roots."
-  (bind ((poly (poly* (roots->polynomial real-roots :real i)
+  (let+ ((poly (poly* (roots->polynomial real-roots :real i)
                       (roots->polynomial complex-roots :complex)))
          (w (filter x poly))
          (y (take 'numeric-vector (slice w '(1 -1))))
          (x (take 'numeric-vector (slice w '(0 -2))))
-         ((:values beta qr nil) (least-squares y x))
+         ((&values beta qr nil) (least-squares y x))
          (var (* variance (xref (least-squares-raw-variance qr) 0 0))))
     (draw-real-root (xref beta 0) var real-probabilities)))
 
 (define-updater (armodel complex-roots :vector-index i)
     (real-roots complex-roots complex-probabilities variance x)
   "Updater for complex roots."
-  (bind ((poly (poly* (roots->polynomial real-roots :real i)
+  (let+ ((poly (poly* (roots->polynomial real-roots :real i)
                       (roots->polynomial complex-roots :complex)))
          (w (filter x poly))
          (y 

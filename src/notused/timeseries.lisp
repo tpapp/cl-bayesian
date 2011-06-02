@@ -67,7 +67,7 @@
 (defun intersect (&rest tss)
   (declare (optimize (debug 3)))
   (assert (apply #'frequency= tss))
-  (bind (((max-start common-length)
+  (let+ (((max-start common-length)
 	  (iter
 	    (for ts :in tss)
 	    (for start := (date->integer ts))

@@ -30,7 +30,7 @@ the number of observations.  Possible priors are:
   "Return dummy observations as (Y . X) for the given prior, for use in a
 linear regression with known variance (LR-KV)."
   (check-type prior r-multivariate-normal)
-  (bind (((:accessors-r/o mean variance-left-sqrt) prior))
+  (let+ (((&accessors-r/o mean variance-left-sqrt) prior))
     (cons (solve variance-left-sqrt mean)
           (invert variance-left-sqrt))))
 
@@ -38,12 +38,12 @@ linear regression with known variance (LR-KV)."
   "Linear regression of Y on X with known VARIANCE for the errors (a single
 scalar is accepted, in which case it is used as a diagonal matrix).  Use
 LR-KV-DUMMIES to generate dummy observations from a prior."
-  (bind ((x (as-regression-covariates x))
-         ((:values y-transformed x-transformed) (transform-y-x y x variance))
-         ((:values y-transformed x-transformed)
+  (let+ ((x (as-regression-covariates x))
+         ((&values y-transformed x-transformed) (transform-y-x y x variance))
+         ((&values y-transformed x-transformed)
           (add-regression-dummies y-transformed x-transformed prior
                                   #'lr-kv-dummies))
-         ((:values beta nil nil qr)
+         ((&values beta nil nil qr)
           (least-squares y-transformed x-transformed :method :qr)))
     (r-multivariate-normal beta (invert-xx qr))))
 
@@ -64,9 +64,8 @@ LR-KV-DUMMIES to generate dummy observations from a prior."
 (defun multivariate-normal-model (y &key prior)
   "Estimate a multivariate normal model.  See p85-88 of Bayesian Data
 Analysis, 2nd edition.  If prior is not given, it is the reference prior."
-  (declare (optimize debug))
-  (bind (((n nil) (array-dimensions y))
-         ((:values sse mean) (matrix-sse y))
+  (let+ (((n nil) (array-dimensions y))
+         ((&values sse mean) (matrix-sse y))
          (kappa n)
          (nu n))
     (when prior
@@ -86,7 +85,7 @@ Analysis, 2nd edition.  If prior is not given, it is the reference prior."
 
 (defmethod draw ((multivariate-normal-model multivariate-normal-model) &key
                  as-distribution?)
-  (bind (((:slots-r/o inverse-scale nu kappa mean) multivariate-normal-model)
+  (let+ (((&slots-r/o inverse-scale nu kappa mean) multivariate-normal-model)
          (sigma (draw (r-inverse-wishart nu inverse-scale)))
          (mean (draw (r-multivariate-normal mean sigma) :scale (/ kappa))))
     (if as-distribution?

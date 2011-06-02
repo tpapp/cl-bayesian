@@ -13,16 +13,16 @@ lower/upper bounds for X.  When NIL, these three are considered as not
 applicable and are not used to terminate the algorithm.  In particular, when
 bounds are given, G is never called outside these."
   (assert gx () "p(x) = 0")
-  (bind ((log-y (- gx (draw-standard-exponential)))
+  (let+ ((log-y (- gx (draw-standard-exponential)))
          (u (random 1d0))
          (left (- x (* w u)))
          (right (+ left w))
-         ((:values j k) (if max-iter
+         ((&values j k) (if max-iter
                             (let* ((j (floor (random (float max-iter 1d0))))
                                    (k (- max-iter 1 j)))
                               (values j k))
                             (values nil nil)))
-         ((:flet outside? (z)) (awhen (funcall g z) (<= it log-y))))
+         ((&flet outside? (z) (awhen (funcall g z) (<= it log-y)))))
     ;; extend to the left
     (loop
       (when (or (and j (<= j 0)) (and lower (<= left lower)) (outside? left))
