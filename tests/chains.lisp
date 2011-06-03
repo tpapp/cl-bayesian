@@ -22,10 +22,18 @@
          (ncol 20)
          (matrix (filled-array (list nrow ncol) (curry #'random 1d0)
                                'double-float))
+         (model (gensym))
+         (burn-in (floor nrow 3))
+         (mcmc-sample (make-instance 'mcmc-sample :model model
+                                                  :elements matrix
+                                                  :burn-in burn-in))
          (partial-ranges #((20 . 40) (60 . 120) (100 . 180)))
          (lags 5)
-         ((&slots autocovariance-accumulators partial-accumulators)
-          (column-statistics matrix partial-ranges :lags lags))
+         ((&slots-r/o (model2 model) (partial-ranges2 partial-ranges)
+                      autocovariance-accumulators partial-accumulators)
+          (column-statistics mcmc-sample
+                             :partial-ranges partial-ranges
+                             :lags lags))
          ((&flet+ sweep-with-accumulators
               ((start . end) accumulator-generator)
             (aprog1 (filled-array ncol accumulator-generator)
@@ -36,14 +44,17 @@
          (*lift-equality-test* #'==)
          (partial-matrix (combine partial-accumulators)))
     (ensure-same autocovariance-accumulators
-                 (sweep-with-accumulators (cons 0 nrow)
+                 (sweep-with-accumulators (cons burn-in nrow)
                                           (curry #'autocovariance-accumulator
                                                  lags)))
     (iter
       (for partial-range in-vector partial-ranges with-index index)
       (ensure-same (sub partial-matrix t index)
                    (sweep-with-accumulators partial-range
-                                            #'mean-sse-accumulator)))))
+                                            #'mean-sse-accumulator)))
+    (ensure-same model model2 :test #'eq)
+    (ensure-same partial-ranges partial-ranges2
+                 :test #'equalp)))
 
 ;;; old implementation of psrf working directly with sequences saved here for
 ;;; comparison and testing purposes

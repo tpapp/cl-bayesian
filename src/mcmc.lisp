@@ -64,41 +64,44 @@ of the same element-type, with the given layout."))
 
 ;;; default implementation, using a flat matrix
 
-(defstruct+ (mcmc-sample)
-  "MCMC sample, arranged in a row-major matrix."
-  (model)
-  (elements))
+(defclass mcmc-sample ()
+  ((model :accessor model :initarg :model)
+   (burn-in :accessor burn-in :initarg :burn-in
+            :documentation "Number of rows used for burn-in.")
+   (elements :accessor elements :initarg :elements
+             :documentation "sample arranged in a row-major matrix."))
+  (:documentation "MCMC sample of scalar parameters with fixed length,
+  flattened out to a row-major matrix."))
+
+(defmethod nrow ((mcmc-sample mcmc-sample))
+  (nrow (elements mcmc-sample)))
 
 (defmethod sample-chain (chain n &key (burn-in (max (floor n 10) 1000))
                          (thin 1) (stream *standard-output*)
                          (progress-bar-length 80))
-  (let+ (((&fwrap burn-in-progress)
-          (text-progress-bar stream burn-in :character #\.
+  (let+ ((length (+ n burn-in))
+         ((&fwrap progress)
+          (text-progress-bar stream length :character #\*
                              :length progress-bar-length))
-         ((&fwrap mcmc-progress)
-          (text-progress-bar stream n :character #\*
-                             :length progress-bar-length))
-         sample)
-    ;; burn-in
-    (dotimes (index burn-in)
-      (burn-in-progress)
-      (update-chain chain))
-    (reset-chain chain)
+         elements)
     ;; draws that are kept
-    (dotimes (index n)
+    (dotimes (index length)
       ;; save thinned draw
       (let+ (((&values thinned-index remainder) (floor index thin)))
         (when (zerop remainder)
           (let ((state (state chain)))
-            (unlessf sample
+            (unlessf elements
                      (make-array (list (ceiling n thin) (length state))
                                  :element-type
                                  (array-element-type state)))
-            (replace (subarray sample thinned-index) state))))
-      (mcmc-progress)
+            (replace (subarray elements thinned-index) state)))
+        (when (= index burn-in)         ; reset chain after burn-in
+          (reset-chain chain)))
+      (progress)
       (update-chain chain))
     ;; done
-    (make-mcmc-sample :model (model chain) :elements sample)))
+    (make-instance 'mcmc-sample :model (model chain) :elements elements
+                   :burn-in burn-in)))
 
 (defmethod scalar-parameters ((sample mcmc-sample) index &key copy?)
   (subarray (mcmc-sample-elements sample) index :copy? copy?))

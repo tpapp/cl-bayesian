@@ -18,10 +18,8 @@
 
    initialize-chain parameters-layout scalar-parameters-layout model
    update-chain state sample-chain reset-chain parameters scalar-parameters 
-   chain
+   mcmc-sample burn-in 
    
-   update parameters parameters-index reset run
-
    ;; slice-sample
 
    slice-sample-so
@@ -33,11 +31,8 @@
    
    ;; chains
 
-   psrf psrf-r psrf-v psrf-w psrf-ranges column-statistics
+   psrf psrf-r psrf-v psrf-w psrf-ranges sample-column-statistics
    autocovariance-accumulators partial-ranges partial-accumulators
-
-   mcmc-chains mcmc-class initargs parameters-ix chains chain-results burn-in 
-   pooled-parameters run-mcmc-chains  chains-psrf
-   calculate-pooled-parameters
+   column-statistics
 
    ))
