@@ -17,11 +17,10 @@
     :serial t
     :components
     ((:file "utilities")
-     (:file "layout")
      (:file "mcmc")
      (:file "slice-sampling")
      (:file "samplers")
-     ;; (:file "chains")
+     (:file "chains")
      ;; (:file "polynomials")
      )))
   :depends-on
