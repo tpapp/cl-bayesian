@@ -31,8 +31,10 @@
    
    ;; chains
 
-   psrf psrf-r psrf-v psrf-w psrf-ranges sample-column-statistics
-   autocovariance-accumulators partial-ranges partial-accumulators
-   column-statistics
+   calculate-psrf psrf-r psrf-v psrf-w psrf-ranges
+   
+   mcmc-statistics accumulators autocovariance-accumulators sse-ranges
+   sse-accumulators psrf accumulators mean-autocorrelations
+   summarize-mcmc-statistics
 
    ))

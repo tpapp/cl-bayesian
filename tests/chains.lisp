@@ -5,21 +5,63 @@
 (deftestsuite diagnostics-tests (cl-bayesian-tests) ())
 
 (addtest (diagnostics-tests)
+  psrf-test
+  ;; test the PSRF calculations on a known result (from R)
   (let+ ((n 100)
          (zeroes (make-array n :initial-element 0d0))
          (ones (make-array n :initial-element 1d0))
          (twos (make-array n :initial-element 2d0))
          (s1 (concat 'double-float zeroes ones))
          (s2 (concat 'double-float zeroes twos))
-         (psrf (psrf (mapcar (curry #'sweep 'sse)
-                             (list s1 s2)))))
+         (psrf (calculate-psrf (mapcar (curry #'sweep 'sse)
+                                       (list s1 s2)))))
     (ensure-same (psrf-r psrf) 1.284474)
     ;; (ensure-same r-upper 2.190318)
     ))
 
 (addtest (diagnostics-tests)
+  mcmc-statistics-test
+  ;; calculate statistic for random elements
+  (let+ ((elements (filled-array '(50 5) (curry #'random 1d0) 'double-float))
+         (burn-in 20)
+         (columns (subarrays 1 (transpose (sub elements (cons burn-in nil) t))))
+         (lags 4)
+         (model (gensym))
+         (sample (make-instance 'mcmc-sample :model model :burn-in burn-in 
+                                             :elements elements))
+         (accumulator-generator #'mean-sse-accumulator)
+         (statistics (mcmc-statistics sample :divisions 3 :minimum-length 0
+                                             :lags lags
+                                             :accumulator-generator
+                                             accumulator-generator))
+         ((&slots-r/o sse-ranges) statistics)
+         (*lift-equality-test* #'==))
+    ;; accumulators for columns
+    (ensure-same (accumulators statistics)
+                 (map1 (lambda (s) (sweep (funcall accumulator-generator) s))
+                       columns))
+    ;; sse accumulators
+    (iter
+      (for column :in-vector (subarrays 1 (transpose elements)))
+      (for sse-accumulator :in-vector (sse-accumulators statistics))
+      (let* ((accumulators (map 'vector (lambda+ ((start . end))
+                                          (sweep (mean-sse-accumulator)
+                                                 (subseq column start end)))
+                                sse-ranges)))
+        (ensure-same sse-accumulator accumulators)))
+    ;; autocovariance accumulators
+    (ensure-same (autocovariance-accumulators statistics)
+                 (map1 (lambda (v) 
+                         (sweep (autocovariance-accumulator lags) v))
+                       columns))))
+
+(addtest (diagnostics-tests)
+  mcmc-statistics-test2
+  ;; In this test the period after burn-in is not composed of the apparent
+  ;; sse-ranges, the purpose of this test is to see if the statistics are
+  ;; calculated correctly.
   (let+ ((nrow 200)
-         (ncol 20)
+         (ncol 2)
          (matrix (filled-array (list nrow ncol) (curry #'random 1d0)
                                'double-float))
          (model (gensym))
@@ -27,13 +69,11 @@
          (mcmc-sample (make-instance 'mcmc-sample :model model
                                                   :elements matrix
                                                   :burn-in burn-in))
-         (partial-ranges #((20 . 40) (60 . 120) (100 . 180)))
+         (sse-ranges #((20 . 40) (60 . 120) (100 . 180)))
          (lags 5)
-         ((&slots-r/o (model2 model) (partial-ranges2 partial-ranges)
-                      autocovariance-accumulators partial-accumulators)
-          (column-statistics mcmc-sample
-                             :partial-ranges partial-ranges
-                             :lags lags))
+         ((&slots-r/o (model2 model) (sse-ranges2 sse-ranges)
+                      autocovariance-accumulators sse-accumulators)
+          (mcmc-statistics mcmc-sample :sse-ranges sse-ranges :lags lags))
          ((&flet+ sweep-with-accumulators
               ((start . end) accumulator-generator)
             (aprog1 (filled-array ncol accumulator-generator)
@@ -42,19 +82,75 @@
                   (add (aref it col-index)
                        (aref matrix row-index col-index)))))))
          (*lift-equality-test* #'==)
-         (partial-matrix (combine partial-accumulators)))
+         (partial-matrix (combine sse-accumulators)))
+    (iter
+      (for sse-range :in-vector sse-ranges :with-index index)
+      (ensure-same (sub partial-matrix t index)
+                   (sweep-with-accumulators sse-range
+                                            #'mean-sse-accumulator)))
+    (ensure-same model model2 :test #'eq)
+    (ensure-same sse-ranges sse-ranges2
+                 :test #'equalp)
     (ensure-same autocovariance-accumulators
                  (sweep-with-accumulators (cons burn-in nrow)
                                           (curry #'autocovariance-accumulator
                                                  lags)))
-    (iter
-      (for partial-range in-vector partial-ranges with-index index)
-      (ensure-same (sub partial-matrix t index)
-                   (sweep-with-accumulators partial-range
-                                            #'mean-sse-accumulator)))
-    (ensure-same model model2 :test #'eq)
-    (ensure-same partial-ranges partial-ranges2
-                 :test #'equalp)))
+    partial-matrix))
+
+
+(addtest (diagnostics-tests)
+  mcmc-summary-test
+  ;; testing mcmc summaries
+  (let+ ((model (gensym))
+         (m 2)                          ; number of variables
+         (n 400)                        ; total length
+         (burn-in 200)
+         (lag 10)
+         ((&flet make-sample (stencil 
+                              &key (model model) (burn-in burn-in) (m m) (n n))
+            (let ((elements (make-array (list n m)))
+                  (stencil (coerce stencil 'vector))
+                  (stencil-length (length stencil)))
+              (dotimes (index (array-total-size elements))
+                (setf (row-major-aref elements index)
+                      (aref stencil (mod index stencil-length))))
+              (make-instance 'mcmc-sample :burn-in burn-in
+                                          :elements elements :model model))))
+         (samples (mapcar #'make-sample
+                          '((0 -1 0 0)
+                            (1 2 0 0)
+                            (3 5 7 11 13 17))))
+         (crude-mean 
+          (mean (subarrays 1 (stack* t :v 
+                                     (mapcar (lambda (s)
+                                               (sub (elements s)
+                                                    (cons (burn-in s) nil) t))
+                                             samples)))))
+         ((&flet sample-autocorrelations (sample)
+            (map1 (rcurry #'autocorrelations lag)
+                  (subarrays 1 (transpose (sub (elements sample)
+                                               (cons (burn-in sample) nil) t))))))
+         (crude-autocorrelations
+          (map1 #'mean
+                (subarrays 1
+                           (transpose
+                            (combine (map 'vector #'sample-autocorrelations
+                                          samples))))))
+         (statistics (mapcar #'mcmc-statistics samples))
+         (summary (summarize-mcmc-statistics statistics))
+         ((&flet summarize-incompatible-chains (&rest arguments)
+            (summarize-mcmc-statistics
+             (list (first statistics)
+                   (scalar-statistics (apply #'make-sample '(1) arguments))))))
+         (*lift-equality-test* #'==))
+    ;; check mean and autocovariance
+    (ensure-same (map1 #'mean (accumulators summary)) crude-mean)
+    (ensure-same (mean-autocorrelations summary) crude-autocorrelations)
+    ;; incompatible chains should give errors
+    (ensure-error (summarize-incompatible-chains :model 'foo))
+    (ensure-error (summarize-incompatible-chains :burn-in 111))
+    (ensure-error (summarize-incompatible-chains :m 9))
+    (ensure-error (summarize-incompatible-chains :n 17))))
 
 ;;; old implementation of psrf working directly with sequences saved here for
 ;;; comparison and testing purposes

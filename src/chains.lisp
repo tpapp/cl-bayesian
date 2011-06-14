@@ -8,7 +8,7 @@
   v
   w)
 
-(defun psrf (accumulators &key (confidence 0.975d0))
+(defun calculate-psrf (accumulators &key (confidence 0.975d0))
   "Estimate the potential scale reduction factor.  Algorithm is from Gelman
 and Rubin (1992), but the degrees of freedom correction is according to Brooks
 and Gelman (1998)."
@@ -58,76 +58,113 @@ Ranges narrower than MINIMUM-LENGTH are discarded."
       (when (<= (+ start minimum-length) end)
         (collect (cons start end))))))
 
-(defclass sample-column-statistics ()
+(defclass mcmc-statistics ()
   ((model :accessor model :initarg :model)   
+   (accumulators :accessor accumulators :initarg :accumulators
+                 :documentation "Vector of accumulators for columns of
+                 scalars.")
    (autocovariance-accumulators :initarg :autocovariance-accumulators
+                                :accessor autocovariance-accumulators
                                 :documentation "Vector of autocovariance
                                 accumulators for each variable.")
-   (partial-ranges :initarg :partial-ranges)
-   (partial-accumulators :initarg :partial-accumulators
+   (sse-ranges :initarg :sse-ranges :accessor sse-ranges)
+   (sse-accumulators :initarg :sse-accumulators :accessor sse-accumulators
                          :documentation "Vector of partial mean-sse
-                         accumulators for each variable.")))
+                         accumulators for each variable."))
+  (:documentation "Statistics for the sample from a single MCMC chain."))
 
-(defun column-statistics (mcmc-sample 
-                                 &key (divisions 20) (minimum-length 100)
-                                      partial-ranges (lags 10))
-  "Helper function to calculate column statistics."
+(defun mcmc-statistics (mcmc-sample 
+                        &key (divisions 20) (minimum-length 100)
+                             sse-ranges (lags 10)
+                             (accumulator-generator #'mean-sse-accumulator))
+  "Helper function to calculate an MCMC-STATISTICS object from a sample."
   (let+ (((&slots-r/o model burn-in elements) mcmc-sample)
          ((nrow ncol) (array-dimensions elements))
-         (partial-ranges (aif partial-ranges
-                              it
-                              (psrf-ranges nrow
-                                           :divisions divisions
-                                           :minimum-length minimum-length
-                                           :burn-in-fraction
-                                           (/ burn-in nrow))))
+         (accumulators (filled-array ncol accumulator-generator))
          (autocovariance-accumulators
           (filled-array ncol (curry #'autocovariance-accumulator lags)))
+         (sse-ranges (aif sse-ranges
+                          it
+                          (psrf-ranges nrow
+                                       :divisions divisions
+                                       :minimum-length minimum-length
+                                       :burn-in-fraction
+                                       (/ burn-in nrow))))
          ((&values subranges index-lists)
-          (subranges partial-ranges
-                     :shadow-ranges (list (cons burn-in nrow))))
-         (accumulators
+          (subranges sse-ranges :shadow-ranges `((,burn-in . ,nrow))))
+         (sse-accumulators
           (combine
            (map 'vector
                 (lambda+ ((start . end))
-                  (let ((accumulators (filled-array ncol
-                                                    #'mean-sse-accumulator)))
-                    (loop for row-index :from start :below end :do
+                  (let ((sse-accumulators
+                         (filled-array ncol #'mean-sse-accumulator)))
+                    (loop for row-index from start below end do
                       (dotimes (column-index ncol)
                         (let ((value (aref elements row-index column-index)))
-                          (add (aref accumulators column-index) value)
+                          (add (aref sse-accumulators column-index) value)
                           (when (<= burn-in row-index)
+                            (add (aref accumulators column-index) value)
                             (add (aref autocovariance-accumulators 
-                                       column-index)
-                                 value)))))
-                    accumulators))
+                                       column-index) value)))))
+                    sse-accumulators))
                 subranges)))
-         (partial-accumulators
+         (sse-accumulators
           (map1 (lambda (accumulators)
                   (iter
                     (for index-list :in-vector index-lists)
                     (let ((accumulators (sub accumulators
                                              (coerce index-list 'vector))))
                       (collect (pool* accumulators) :result-type vector))))
-                (subarrays (transpose accumulators) 1))))
-    (make-instance 'sample-column-statistics
+                (subarrays 1 (transpose sse-accumulators)))))
+    (make-instance 'mcmc-statistics
                    :model model
+                   :accumulators accumulators
                    :autocovariance-accumulators autocovariance-accumulators
-                   :partial-ranges partial-ranges
-                   :partial-accumulators partial-accumulators)))
+                   :sse-ranges sse-ranges
+                   :sse-accumulators sse-accumulators)))
 
-(defun summarize-column-statistics (column-statistics)
+(defclass mcmc-summary ()
+  ((model :accessor model :initarg :model)   
+   (psrf :accessor psrf :initarg :psrf)
+   (accumulators :accessor accumulators :initarg :accumulators)
+   (mean-autocorrelations :accessor mean-autocorrelations
+                          :initarg :mean-autocorrelations)))
+
+(defun summarize-mcmc-statistics (mcmc-statistics)
   "Calculate summaries of column statistics."
-  (let+ ((column-statistics (coerce column-statistics 'vector))
-         (partial-ranges (common column-statistics :key #'partial-ranges
-                                                   :test #'equalp))
+  (let+ ((mcmc-statistics (coerce mcmc-statistics 'vector))
+         (model (aprog1 (common mcmc-statistics :key #'model)
+                  (assert it)))
+         ((&flet pool-chains (accessor transformation reduction)
+            ;; Extract vector of statistics from each chain using ACCESSOR,
+            ;; apply TRANSFORMATION, then pool them using REDUCTION
+            (map1
+             reduction
+             (subarrays 1 
+                        (map1 transformation
+                              (transpose 
+                               (combine (map1 accessor 
+                                              mcmc-statistics))))))))
+         ;; psrf
          (variance-accumulators
-          (combine (map1 #'partial-accumulators column-statistics)))
-         (psrf (map1 #'psrf (subarrays (transpose variance-accumulators) 1)))
-         ()
-         )
-    ( variance-accumulator  )
-    ))
+          (permute 
+           (combine (map1 (compose #'combine #'sse-accumulators)
+                          mcmc-statistics))
+           '(1 2 0)))
+         (psrf (subarrays 1 (map1 #'calculate-psrf
+                                  (subarrays 2 variance-accumulators))))
+         ;; autocorrelations
+         (mean-autocorrelations
+          (pool-chains #'autocovariance-accumulators
+                       #'autocorrelations
+                       #'mean))
+         ;; pooled accumulators
+         (accumulators (pool-chains #'accumulators #'identity #'pool*)))
+    (assert (common mcmc-statistics :key #'sse-ranges :test #'equalp))
+    (make-instance 'mcmc-summary
+                   :model model :psrf psrf
+                   :accumulators accumulators
+                   :mean-autocorrelations mean-autocorrelations)))
 
 ;;; - functions that pool samples should just verify that they point to the
 ;;;   same model and be done with it
