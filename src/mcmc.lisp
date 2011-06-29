@@ -33,11 +33,11 @@
   (:documentation "Return the current state of the chain.  Note: see the
   documentation of SAMPLE-CHAIN.)"))
 
-(defgeneric sample-chain (chain n 
-                                &key burn-in thin stream progress-bar-length)
-  (:documentation "Sample N draws from CHAIN.  Parameters govern BURN-IN (a
-sensible value is calculated by default), thinning (every THIN draw is kept),
-and output of a progress bar (if not desired, set PROGRESS-INDICATOR to NIL).
+(defgeneric sample-chain (chain n &key thin stream progress-bar-length
+                                       &allow-other-keys)
+  (:documentation "Sample N draws from CHAIN.  Parameters govern
+thinning (every THIN draw is kept), and output of a progress bar (if not
+desired, set PROGRESS-INDICATOR to NIL).
 
 The generic function PARAMETERS and PARAMETERS-LAYOUT do not have to be
 defined for all chain classes, however, the default behavior of SAMPLE-CHAIN
@@ -65,9 +65,7 @@ of the same element-type, with the given layout."))
 ;;; default implementation, using a flat matrix
 
 (defclass mcmc-sample ()
-  ((model :accessor model :initarg :model)
-   (burn-in :accessor burn-in :initarg :burn-in
-            :documentation "Number of rows used for burn-in.")
+  ((model :reader model :initarg :model)
    (elements :accessor elements :initarg :elements
              :documentation "sample arranged in a row-major matrix."))
   (:documentation "MCMC sample of scalar parameters with fixed length,
@@ -76,16 +74,14 @@ of the same element-type, with the given layout."))
 (defmethod nrow ((mcmc-sample mcmc-sample))
   (nrow (elements mcmc-sample)))
 
-(defmethod sample-chain (chain n &key (burn-in (max (floor n 10) 1000))
-                         (thin 1) (stream *standard-output*)
+(defmethod sample-chain (chain n &key (thin 1) (stream *standard-output*)
                          (progress-bar-length 80))
-  (let+ ((length (+ n burn-in))
-         ((&fwrap progress)
-          (text-progress-bar stream length :character #\*
-                             :length progress-bar-length))
+  (let+ (((&fwrap progress)
+          (text-progress-bar stream n :character #\*
+                                      :length progress-bar-length))
          elements)
     ;; draws that are kept
-    (dotimes (index length)
+    (dotimes (index n)
       ;; save thinned draw
       (let+ (((&values thinned-index remainder) (floor index thin)))
         (when (zerop remainder)
@@ -95,16 +91,16 @@ of the same element-type, with the given layout."))
                                  :element-type
                                  (array-element-type state)))
             (replace (subarray elements thinned-index) state)))
-        (when (= index burn-in)         ; reset chain after burn-in
-          (reset-chain chain)))
+        ;; (when (= index burn-in)         ; reset chain after burn-in
+        ;;   (reset-chain chain))
+        )
       (progress)
       (update-chain chain))
     ;; done
-    (make-instance 'mcmc-sample :model (model chain) :elements elements
-                   :burn-in burn-in)))
+    (make-instance 'mcmc-sample :model (model chain) :elements elements)))
 
 (defmethod scalar-parameters ((sample mcmc-sample) index &key copy?)
-  (subarray (mcmc-sample-elements sample) index :copy? copy?))
+  (cl-num-utils::maybe-copy-array (subarray (elements sample) index) copy?))
 
 ;;;  Counter for Metropolis (and Metropolis-Hastings) steps.
 ;;;

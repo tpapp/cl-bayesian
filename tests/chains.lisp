@@ -27,13 +27,13 @@
          (columns (subarrays 1 (transpose (sub elements (cons burn-in nil) t))))
          (lags 4)
          (model (gensym))
-         (sample (make-instance 'mcmc-sample :model model :burn-in burn-in 
-                                             :elements elements))
+         (sample (make-instance 'mcmc-sample :model model :elements elements))
          (accumulator-generator #'mean-sse-accumulator)
-         (statistics (mcmc-statistics sample :divisions 3 :minimum-length 0
-                                             :lags lags
-                                             :accumulator-generator
-                                             accumulator-generator))
+         (statistics 
+          (mcmc-statistics sample :divisions 3 :minimum-length 0 :lags lags
+                                  :accumulator-generator accumulator-generator
+                                  :burn-in-fraction (/ burn-in 
+                                                       (nrow elements))))
          ((&slots-r/o sse-ranges) statistics)
          (*lift-equality-test* #'==))
     ;; accumulators for columns
@@ -66,14 +66,14 @@
                                'double-float))
          (model (gensym))
          (burn-in (floor nrow 3))
-         (mcmc-sample (make-instance 'mcmc-sample :model model
-                                                  :elements matrix
-                                                  :burn-in burn-in))
+         (mcmc-sample
+          (make-instance 'mcmc-sample :model model :elements matrix))
          (sse-ranges #((20 . 40) (60 . 120) (100 . 180)))
          (lags 5)
          ((&slots-r/o (model2 model) (sse-ranges2 sse-ranges)
                       autocovariance-accumulators sse-accumulators)
-          (mcmc-statistics mcmc-sample :sse-ranges sse-ranges :lags lags))
+          (mcmc-statistics mcmc-sample :sse-ranges sse-ranges :lags lags
+                                       :burn-in-fraction (/ burn-in nrow)))
          ((&flet+ sweep-with-accumulators
               ((start . end) accumulator-generator)
             (aprog1 (filled-array ncol accumulator-generator)
@@ -97,7 +97,6 @@
                                                  lags)))
     partial-matrix))
 
-
 (addtest (diagnostics-tests)
   mcmc-summary-test
   ;; testing mcmc summaries
@@ -105,17 +104,17 @@
          (m 2)                          ; number of variables
          (n 400)                        ; total length
          (burn-in 200)
+         (burn-in-fraction (/ burn-in n))
          (lag 10)
-         ((&flet make-sample (stencil 
-                              &key (model model) (burn-in burn-in) (m m) (n n))
+         ((&flet make-sample (stencil &key (model model) (burn-in burn-in)
+                                      (m m) (n n))
             (let ((elements (make-array (list n m)))
                   (stencil (coerce stencil 'vector))
                   (stencil-length (length stencil)))
               (dotimes (index (array-total-size elements))
                 (setf (row-major-aref elements index)
                       (aref stencil (mod index stencil-length))))
-              (make-instance 'mcmc-sample :burn-in burn-in
-                                          :elements elements :model model))))
+              (make-instance 'mcmc-sample :elements elements :model model))))
          (samples (mapcar #'make-sample
                           '((0 -1 0 0)
                             (1 2 0 0)
@@ -124,31 +123,35 @@
           (mean (subarrays 1 (stack* t :v 
                                      (mapcar (lambda (s)
                                                (sub (elements s)
-                                                    (cons (burn-in s) nil) t))
+                                                    (cons burn-in nil) t))
                                              samples)))))
          ((&flet sample-autocorrelations (sample)
             (map1 (rcurry #'autocorrelations lag)
                   (subarrays 1 (transpose (sub (elements sample)
-                                               (cons (burn-in sample) nil) t))))))
+                                               (cons burn-in nil) t))))))
          (crude-autocorrelations
           (map1 #'mean
                 (subarrays 1
                            (transpose
                             (combine (map 'vector #'sample-autocorrelations
                                           samples))))))
-         (statistics (mapcar #'mcmc-statistics samples))
+         (statistics 
+          (mapcar (lambda (s) 
+                    (mcmc-statistics s :burn-in-fraction burn-in-fraction))
+                  samples))
          (summary (summarize-mcmc-statistics statistics))
          ((&flet summarize-incompatible-chains (&rest arguments)
             (summarize-mcmc-statistics
              (list (first statistics)
-                   (scalar-statistics (apply #'make-sample '(1) arguments))))))
+                   (scalar-statistics (apply #'make-sample '(1)
+                                             arguments))))))
          (*lift-equality-test* #'==))
     ;; check mean and autocovariance
     (ensure-same (map1 #'mean (accumulators summary)) crude-mean)
     (ensure-same (mean-autocorrelations summary) crude-autocorrelations)
     ;; incompatible chains should give errors
     (ensure-error (summarize-incompatible-chains :model 'foo))
-    (ensure-error (summarize-incompatible-chains :burn-in 111))
+    ;; (ensure-error (summarize-incompatible-chains :burn-in 111))
     (ensure-error (summarize-incompatible-chains :m 9))
     (ensure-error (summarize-incompatible-chains :n 17))))
 

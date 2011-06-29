@@ -2,6 +2,8 @@
 
 (in-package #:cl-bayesian)
 
+(defparameter *suggested-minimum-burn-in* 200)
+
 (defstruct psrf 
   "Potential scale reduction factor."
   r
@@ -76,9 +78,10 @@ Ranges narrower than MINIMUM-LENGTH are discarded."
 (defun mcmc-statistics (mcmc-sample 
                         &key (divisions 20) (minimum-length 100)
                              sse-ranges (lags 10)
-                             (accumulator-generator #'mean-sse-accumulator))
+                             (accumulator-generator #'mean-sse-accumulator)
+                             (burn-in-fraction 0.5))
   "Helper function to calculate an MCMC-STATISTICS object from a sample."
-  (let+ (((&slots-r/o model burn-in elements) mcmc-sample)
+  (let+ (((&slots-r/o model elements) mcmc-sample)
          ((nrow ncol) (array-dimensions elements))
          (accumulators (filled-array ncol accumulator-generator))
          (autocovariance-accumulators
@@ -88,8 +91,12 @@ Ranges narrower than MINIMUM-LENGTH are discarded."
                           (psrf-ranges nrow
                                        :divisions divisions
                                        :minimum-length minimum-length
-                                       :burn-in-fraction
-                                       (/ burn-in nrow))))
+                                       :burn-in-fraction burn-in-fraction)))
+         (burn-in (aprog1 (ceiling (* nrow burn-in-fraction))
+                    (when (and *suggested-minimum-burn-in*
+                               (< it *suggested-minimum-burn-in*))
+                      (warn "Burn-in ~A is below suggested minimum minimum."
+                            it))))
          ((&values subranges index-lists)
           (subranges sse-ranges :shadow-ranges `((,burn-in . ,nrow))))
          (sse-accumulators
