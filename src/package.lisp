@@ -1,4 +1,5 @@
-(defpackage cl-bayesian (:nicknames mcmc)
+(defpackage cl-bayesian
+  (:nicknames mcmc)
   (:use common-lisp iterate let-plus anaphora cl-num-utils alexandria
         lla cl-random lla)
   (:shadowing-import-from cl-num-utils
@@ -17,8 +18,8 @@
    ;; mcmc
 
    initialize-chain parameters-layout scalar-parameters-layout model
-   update-chain state sample-chain reset-chain parameters scalar-parameters 
-   mcmc-sample burn-in 
+   common-model update-chain state sample-chain reset-chain parameters
+   scalar-parameters  mcmc-sample burn-in 
    
    ;; slice-sample
 
@@ -31,10 +32,12 @@
    
    ;; chains
 
-   calculate-psrf psrf-r psrf-v psrf-w psrf-ranges
+   calculate-psrf psrf-r psrf-v psrf-w calculate-psrf-ranges
    
    mcmc-statistics accumulators autocovariance-accumulators sse-ranges
-   sse-accumulators psrf accumulators mean-autocorrelations
-   summarize-mcmc-statistics
+   sse-accumulators
+   
+   mcmc-summary  psrf accumulators mean-autocorrelations psrf-ranges
+   summarize-mcmc-statistics pool-samples
 
    ))

@@ -24,6 +24,11 @@
 (defgeneric model (object)
   (:documentation "Return the corresponding model"))
 
+(defun common-model (objects)
+  "Find the common model."
+  (common objects :key #'model :test #'eq
+                  :error "Objects don't refer to the same models."))
+
 ;;; chain
 
 (defgeneric update-chain (chain)

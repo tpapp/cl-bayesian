@@ -4,6 +4,19 @@
 
 (defparameter *suggested-minimum-burn-in* 200)
 
+(defun check-burn-in (burn-in)
+  "Check that burn-in is above the suggested minimum (when defined)."
+  (when (and *suggested-minimum-burn-in*
+             (< burn-in *suggested-minimum-burn-in*))
+    (warn "Burn-in ~A is below suggested minimum burn-in (~A)."
+          burn-in *suggested-minimum-burn-in*)))
+
+(defun calculate-burn-in (n burn-in-fraction)
+  "Calculate burn-in from burn-in fraction and total number of samples.
+Note: efined as a separate function for consistency of rounding."
+  (assert (within? 0 burn-in-fraction 1))
+  (ceiling (* n burn-in-fraction)))
+
 (defstruct psrf 
   "Potential scale reduction factor."
   r
@@ -49,8 +62,8 @@ and Gelman (1998)."
                :V V
                :W w)))
 
-(defun psrf-ranges (n &key (divisions 20) (burn-in-fraction 0.5)
-                           (minimum-length 100))
+(defun calculate-psrf-ranges (n &key (divisions 20) (burn-in-fraction 0.5)
+                                     (minimum-length 100))
   "Calculate ranges for PSRF.  Return as a list of (start . end) values.
 Ranges narrower than MINIMUM-LENGTH are discarded."
   (iter
@@ -88,15 +101,13 @@ Ranges narrower than MINIMUM-LENGTH are discarded."
           (filled-array ncol (curry #'autocovariance-accumulator lags)))
          (sse-ranges (aif sse-ranges
                           it
-                          (psrf-ranges nrow
-                                       :divisions divisions
-                                       :minimum-length minimum-length
-                                       :burn-in-fraction burn-in-fraction)))
-         (burn-in (aprog1 (ceiling (* nrow burn-in-fraction))
-                    (when (and *suggested-minimum-burn-in*
-                               (< it *suggested-minimum-burn-in*))
-                      (warn "Burn-in ~A is below suggested minimum minimum."
-                            it))))
+                          (calculate-psrf-ranges 
+                           nrow
+                           :divisions divisions
+                           :minimum-length minimum-length
+                           :burn-in-fraction burn-in-fraction)))
+         (burn-in (aprog1 (calculate-burn-in nrow burn-in-fraction)
+                    (check-burn-in it)))
          ((&values subranges index-lists)
           (subranges sse-ranges :shadow-ranges `((,burn-in . ,nrow))))
          (sse-accumulators
@@ -133,6 +144,7 @@ Ranges narrower than MINIMUM-LENGTH are discarded."
 (defclass mcmc-summary ()
   ((model :accessor model :initarg :model)   
    (psrf :accessor psrf :initarg :psrf)
+   (psrf-ranges :accessor psrf-ranges :initarg :psrf-ranges)
    (accumulators :accessor accumulators :initarg :accumulators)
    (mean-autocorrelations :accessor mean-autocorrelations
                           :initarg :mean-autocorrelations)))
@@ -140,8 +152,7 @@ Ranges narrower than MINIMUM-LENGTH are discarded."
 (defun summarize-mcmc-statistics (mcmc-statistics)
   "Calculate summaries of column statistics."
   (let+ ((mcmc-statistics (coerce mcmc-statistics 'vector))
-         (model (aprog1 (common mcmc-statistics :key #'model)
-                  (assert it)))
+         (model (common-model mcmc-statistics))
          ((&flet pool-chains (accessor transformation reduction)
             ;; Extract vector of statistics from each chain using ACCESSOR,
             ;; apply TRANSFORMATION, then pool them using REDUCTION
@@ -158,20 +169,45 @@ Ranges narrower than MINIMUM-LENGTH are discarded."
            (combine (map1 (compose #'combine #'sse-accumulators)
                           mcmc-statistics))
            '(1 2 0)))
-         (psrf (subarrays 1 (map1 #'calculate-psrf
-                                  (subarrays 2 variance-accumulators))))
+         (psrf (map1 #'calculate-psrf
+                     (subarrays 2 variance-accumulators)))
          ;; autocorrelations
          (mean-autocorrelations
           (pool-chains #'autocovariance-accumulators
                        #'autocorrelations
                        #'mean))
          ;; pooled accumulators
-         (accumulators (pool-chains #'accumulators #'identity #'pool*)))
-    (assert (common mcmc-statistics :key #'sse-ranges :test #'equalp))
+         (accumulators (pool-chains #'accumulators #'identity #'pool*))
+         (sse-ranges (common mcmc-statistics :key #'sse-ranges :test #'equalp)))
+    (assert sse-ranges)
     (make-instance 'mcmc-summary
                    :model model :psrf psrf
                    :accumulators accumulators
-                   :mean-autocorrelations mean-autocorrelations)))
+                   :mean-autocorrelations mean-autocorrelations
+                   :psrf-ranges sse-ranges)))
+
+(defun pool-samples (mcmc-samples &key (burn-in-fraction 0.5))
+  "Pool MCMC samplers, discarding BURN-IN-FRACTION."
+  (make-instance 'mcmc-sample
+                 :elements
+                 (stack* t :v
+                         (map 'list
+                              (lambda (sample)
+                                (asub (elements sample)
+                                      (cons (calculate-burn-in 
+                                             (nrow it) burn-in-fraction)
+                                            nil)
+                                      t))
+                              mcmc-samples))
+                 :model (common-model mcmc-samples)))
+
+;; (defun psrf-summary-quantiles (mcmc-statistics-summary
+;;                                &key (quantiles #(0d0 0.025d0 0.25d0 0.5d0
+;;                                                  0.75d0 0.975d0 1d0)))
+;;   (let ((r (map1 #'psrf-r (psrf mcmc-statistics-summary)))
+;;         (q (combine (map1 (quantile)))))
+;;     )
+;;   )
 
 ;;; - functions that pool samples should just verify that they point to the
 ;;;   same model and be done with it
