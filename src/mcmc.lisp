@@ -11,15 +11,17 @@
   necessarily in a deterministic manner; other arguments may be used to
   specify initial points or overdispersion."))
 
+(defgeneric scalar-parameters-layout (model)
+  (:documentation "Return a layout specification for scalar parameters.  Has
+  to be constant for the same model, regardless of the chain or the state."))
+
 (defgeneric parameters-layout (model)
   (:documentation "Return the layout of parameters.  Has to be constant for
   the same model, regardless of the chain or the state.  Note: this method
   does not have to be defined for custom random-sample versions, see the
-  documentation of the latter."))
-
-(defgeneric scalar-parameters-layout (model)
-  (:documentation "Return a layout specification for scalar parameters.  Has
-  to be constant for the same model, regardless of the chain or the state."))
+  documentation of the latter.")
+  (:method (model)
+    (scalar-parameters-layout model)))
 
 (defgeneric model (object)
   (:documentation "Return the corresponding model"))
@@ -57,7 +59,7 @@ of the same element-type, with the given layout."))
 
 ;;; sample
 
-(defgeneric parameters (sample index-specification keys &key copy?)
+(defgeneric parameters (sample selection &rest keys)
   (:documentation "Return the requested parameter object at given INDEX from a
   Markov chain.  May share structure unless COPY?."))
 
@@ -79,8 +81,28 @@ of the same element-type, with the given layout."))
 (defmethod nrow ((mcmc-sample mcmc-sample))
   (nrow (elements mcmc-sample)))
 
+(defmethod parameters ((mcmc-sample mcmc-sample) selection &rest keys)
+  (let+ (((&slots-r/o model elements) mcmc-sample)
+         (row-indexes (sub-resolve-selection selection (nrow elements) nil t))
+         ((&values position layout)
+          (apply #'layout-position (parameters-layout model) keys))
+         ((&fwrap extractor)
+          (if (consp position)
+              (let+ (((start . end) position)
+                     (length (- end start))
+                     (ncol (ncol elements)))
+                (lambda (row-index)
+                  (layout-ref (displace-array elements length
+                                              (+ start (* ncol row-index)))
+                              layout)))
+              (lambda (row-index)
+                (aref elements position row-index)))))
+    (etypecase row-indexes
+      (fixnum (extractor row-indexes))
+      (vector (map1 #'extractor row-indexes)))))
+
 (defmethod sample-chain (chain n &key (thin 1) (stream *standard-output*)
-                         (progress-bar-length 80))
+                                      (progress-bar-length 80))
   (let+ (((&fwrap progress)
           (text-progress-bar stream n :character #\*
                                       :length progress-bar-length))
