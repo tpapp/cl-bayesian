@@ -96,7 +96,7 @@ of the same element-type, with the given layout."))
                                               (+ start (* ncol row-index)))
                               layout)))
               (lambda (row-index)
-                (aref elements position row-index)))))
+                (aref elements row-index position)))))
     (etypecase row-indexes
       (fixnum (extractor row-indexes))
       (vector (map1 #'extractor row-indexes)))))
