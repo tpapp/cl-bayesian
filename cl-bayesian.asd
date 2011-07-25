@@ -21,6 +21,7 @@
      (:file "slice-sampling")
      (:file "samplers")
      (:file "chains")
+     (:file "validation")
      ;; (:file "polynomials")
      )))
   :depends-on
