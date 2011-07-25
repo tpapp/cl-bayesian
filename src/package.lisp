@@ -1,7 +1,7 @@
 (defpackage cl-bayesian
   (:nicknames mcmc)
   (:use common-lisp iterate let-plus anaphora cl-num-utils alexandria
-        lla cl-random lla)
+        lla cl-random)
   (:shadowing-import-from cl-num-utils
                           mean variance xor) ; also in alexandria
   (:export
@@ -39,5 +39,9 @@
    
    mcmc-summary  psrf accumulators mean-autocorrelations psrf-ranges
    summarize-mcmc-statistics pool-samples
+   
+   ;; validation
+
+   ;; !! TODO
 
    ))
