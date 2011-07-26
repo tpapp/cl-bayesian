@@ -163,3 +163,21 @@ parameters.  Returns a vector of draws."
           (dlm-forward-filtering a0 R0 y+ parameters+)))
     (values (dlm-backward-sampling m+ a+ c-inverse+ parameters+)
             m+ C-inverse+ a+)))
+
+(defun dlm-errors (theta+ y+ parameters+)
+  "Return vectors of the errors of the state equation (omega, mean included)
+and the observation equation (nu) as two values.  Note that the first element
+of OMEGA is NIL as it is not identified."
+  (let* ((n (common-length theta+ y+ parameters+))
+         (omega (make-array n :initial-element nil))
+         (nu (make-array n)))
+    (iter
+      (for theta :in-vector theta+ :with-index index)
+      (for theta-p :previous theta)
+      (for parameters :in-vector parameters+)
+      (for y :in-vector y+)
+      (let+ (((&structure-r/o dlm-parameters- G F) parameters))
+        (unless (zerop index)
+          (setf (aref omega index) (e- theta (mm G theta-p))))
+        (setf (aref nu index) (e- y (mm F theta)))))
+    (values omega nu)))

@@ -49,6 +49,6 @@
    uddu uddu-u uddu-d uddu-update uddu-multiply-update dlm-parameters
    make-dlm-parameters dlm-parameters-G dlm-parameters-mu dlm-parameters-W
    dlm-parameters-F dlm-parameters-V dlm-forward-filtering
-   dlm-backward-sampling dlm-ff-bs
+   dlm-backward-sampling dlm-ff-bs dlm-errors
 
    ))
