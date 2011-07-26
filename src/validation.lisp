@@ -24,11 +24,22 @@ ranks have to be in (0,1)."
          (for r :in-vector ranks)
          (summing (expt (quantile (r-normal) r) 2)))))
 
+(defun abs-z-transform (p)
+  "Transform the probability p (in [0,1]) to the absolute value of a standard
+  normal.  For 0 and 1, return NIL."
+  (if (or (= p 1) (= p 0))
+      nil
+      (abs (quantile (r-normal) p))))
+
 (defun calculate-p-statistics (ranks+)
   "Calculate the P statistics of a ranks (a vector of vectors, or equal
 length)."
   (map1 #'calculate-p-statistic
         (subarrays 1 (transpose (combine ranks+)))))
+
+(defun calculate-abs-z-statistics (ranks+)
+  "Calculate the abs(z) statistics from ranks. "
+  (map1 #'abs-z-transform (calculate-p-statistics ranks+)))
 
 ;;; testing the validation with a normal distribution
 
