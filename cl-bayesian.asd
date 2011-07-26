@@ -22,6 +22,7 @@
      (:file "samplers")
      (:file "chains")
      (:file "validation")
+     (:file "dlm")
      ;; (:file "polynomials")
      )))
   :depends-on
