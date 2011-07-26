@@ -113,8 +113,7 @@
                             0.6192969 -0.4332042
                             -0.4332042  0.6796355)))))
 
-
-;;; functions below are for testing
+;;; auxilirary functions for testing backward sampling
 
 (defun dlm-generate-sample (a R parameters+)
   "Generate a sample for a DLM with given parametes, drawing the first state
@@ -137,8 +136,8 @@ from N(a,R).  Return (values theta+ y+)."
 (defun dlm-flatten-theta (theta+)
   (flatten-array (combine theta+ 'double-float) :copy? t))
 
-(defun dlm-simulated-ranks (n a R parameters+)
-  "Empirical ranks of simulated data."
+(defun dlm-simulate-ranks (n a R parameters+)
+  "Return a vector of empirical ranks of simulated data."
   (let+ (((&values theta0 y+) (dlm-generate-sample a R parameters+))
          (draws (combine
                  (filled-array n
@@ -147,77 +146,54 @@ from N(a,R).  Return (values theta+ y+)."
                                   (dlm-ff-bs a R y+ parameters+)))))))
     (calculate-empirical-ranks (dlm-flatten-theta theta0) draws)))
 
+(defun dlm-simulate-ranks+ (n-replications n-draws a0 R0 parameters+
+                             &key (stream *standard-output*))
+  "Return a vector of ranks which can be passed to
+calculate-abs-z-statistics."
+  (let ((progress-bar (text-progress-bar stream n-replications)))
+    (filled-array n-replications
+                  (lambda ()
+                    (funcall progress-bar)
+                    (dlm-simulate-ranks n-draws a0 R0 parameters+)))))
 
+(defun small-zs? (z-statistics &key (threshold 2) (margin 3))
+  "Test if the number of Z statistics larger than THRESHOLD is smaller than
+the expected number when corrected by MARGIN."
+  (let ((count (count-if (curry #'< threshold) z-statistics))
+        (p (* 2 (- 1 (cdf (r-normal) threshold)))))
+    (< count (ceiling (* margin p (length z-statistics))))))
 
-;;; compare to R
+(addtest (dlm-tests)
+  dlm-ff-bs-univariate
+  (let* ((parameters (make-dlm-parameters :g (clo :double 1 :/)
+                                          :mu (clo :double 0)
+                                          :W (clo :hermitian :double 0.05 :/)
+                                          :F (clo :double 1 :/)
+                                          :V (clo :hermitian 0.02 :/)))
+         (ranks+ (dlm-simulate-ranks+ 100 200
+                                      (clo :double 0)
+                                      (clo :hermitian :double 2 :/)
+                                      (make-array 10 :initial-element
+                                                  parameters)))
+         (z-statistics (calculate-abs-z-statistics ranks+)))
+    (format t "z-statistics: ~A~%" z-statistics)
+    (ensure (small-zs? z-statistics))))
 
-;;; univariate
-(defparameter *parameters*
-  (make-dlm-parameters :g (clo :double 1 :/)
-                       :mu (clo :double 0)
-                       :W (clo :hermitian :double 0.05 :/)
-                       :F (clo :double 1 :/)
-                       :V (clo :hermitian 0.02 :/)))
-(defparameter *prior-a* (clo :double 0))
-(defparameter *prior-R* (clo :hermitian :double 2 :/))
-(defparameter *parameters+* (make-array 10 :initial-element *parameters*))
-(defparameter *parameters+* (make-array 1 :initial-element *parameters*))
-
-
-
-;;; locally linear
-(defparameter *prior-a* (clo :double 0 0))
-(defparameter *prior-R* (clo :diagonal :double 1 1))
-(defparameter *parameters+*
-  (make-array 10
-              :initial-element (make-dlm-parameters 
-                                :g (clo :double
-                                        1 1 :/ 
-                                        0 1)
-                                :mu (clo :double 0 0)
-                                :w (clo :double :diagonal 0.05 0.03)
-                                :f (clo :double 1 1 :/)
-                                :v (clo :double :diagonal 0.02))))
-
-(mean (filled-array 500 
-                    (lambda ()
-                      (first* (dlm-generate-sample *prior-a* *prior-r*
-                                                   *parameters+*)))))
-
-(dlm-g)
-
-(defparameter *ranks* 
-  (filled-array 50
-                (lambda ()
-                  (format t ".")
-                  (dlm-simulated-ranks 200 *prior-a* *prior-r*
-                                       *parameters+*))))
-
-(defparameter *p* (calculate-p-statistics *ranks*))
-(defparameter *z* (calculate-abs-z-statistics *ranks*))
-
-
-
-
-
-(use-package '(:cl-2d :cl-colors))
-
-
-(loop repeat 200 do
- (with-pdf-frame (frame "/tmp/foo.pdf")
-   (defparameter *theta-s+*
-     (dlm-ffbs *prior-a* *prior-R* *y+* *parameters+*))
-   (plot-rows frame (ivec (length *theta+*))
-              (map1 #'first* (combine (vector *theta+* *y+* *theta-s+*)))
-              (vector (make-instance 'line-style :color +red+)
-                      (make-instance 'line-style :color +green+)
-                      (make-instance 'line-style :color +blue+))))
- (sleep 0.1))
-
-(mm
- #S(UDDU
-     :U #2A(#)
-     :D (clo :diagonal 0.14072))
- #2A((1.0d0)))
-
-
+(addtest (dlm-tests)
+  dlm-ff-bs-bivariate
+  (let* ((parameters (make-dlm-parameters 
+                      :g (clo :double
+                              1 1 :/ 
+                              0 1)
+                      :mu (clo :double 0 0)
+                      :w (clo :double :diagonal 0.05 0.03)
+                      :f (clo :double 1 1 :/)
+                      :v (clo :double :diagonal 0.02)))
+         (ranks+ (dlm-simulate-ranks+ 100 200
+                                      (clo :double 2 9)
+                                      (clo :diagonal 2 3)
+                                      (make-array 10 :initial-element
+                                                  parameters)))
+         (z-statistics (calculate-abs-z-statistics ranks+)))
+    (format t "z-statistics: ~A~%" z-statistics)
+    (ensure (small-zs? z-statistics))))
