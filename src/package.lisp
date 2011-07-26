@@ -36,13 +36,13 @@
    
    mcmc-statistics accumulators autocovariance-accumulators sse-ranges
    sse-accumulators
-   
+-   
    mcmc-summary  psrf accumulators mean-autocorrelations psrf-ranges
    summarize-mcmc-statistics pool-samples
    
    ;; validation
 
-   ;; !! TODO
+   calculate-empirical-ranks calculate-p-statistics calculate-abs-z-statistics
 
    ;; dlm
    
