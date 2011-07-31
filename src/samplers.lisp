@@ -26,9 +26,11 @@ taken from accumulator.  The following priors are accepted:
 ;;;; ****************************************************************
 
 (cl-random::define-rv r-univariate-normal-model (mu kappa alpha beta)
-  (:documentation "sigma^2 ~ inverse-gamma(alpha,beta) and m ~
-   N(mu,s^2/kappa).  Conjugate prior for univariate normal data.  See BDA,
-   Section 3.3.  The reparametrization here is alpha=nu/2 and beta=nu*s^2/2."
+  (:documentation "Posterior distributions for univariate normal model -- the
+   draws themselves are normal distributions, with sigma^2 ~
+   inverse-gamma(alpha,beta) and m ~ N(mu,s^2/kappa).  This rv is also a
+   conjugate prior for univariate normal data.  See BDA, Section 3.3.  The
+   reparametrization here is alpha=nu/2 and beta=nu*s^2/2."
    :==-slots (mu kappa sigma-square))
   ((mu :type double-float :reader t)
    (kappa :type double-float :reader t)
@@ -38,9 +40,7 @@ taken from accumulator.  The following priors are accepted:
                      :sigma-square (r-inverse-gamma alpha beta)))
   (draw (&key)
         (let ((s^2 (draw sigma-square)))
-          (values
-           (draw (r-normal mu (/ s^2 kappa)))
-           s^2))))
+          (r-normal (draw (r-normal mu (/ s^2 kappa))) s^2))))
 
 (define-indirect-accessors r-univariate-normal-model 
     r-univariate-normal-model-sigma-square s^2 nu alpha beta)
@@ -63,24 +63,24 @@ taken from accumulator.  The following priors are accepted:
 
 
 
-(defun variance-distribution (ss n prior)
-  "When residuals ~ NIID(0,variance), return a posterior distribution for the
-variance with the given prior.  SS is the sum of squared residuals, and N is
-the number of observations.  Possible priors are:
+;; (defun variance-distribution (ss n prior)
+;;   "When residuals ~ NIID(0,variance), return a posterior distribution for the
+;; variance with the given prior.  SS is the sum of squared residuals, and N is
+;; the number of observations.  Possible priors are:
 
-  :REFERENCE  -- p(variance) \propto 1/variance
+;;   :REFERENCE  -- p(variance) \propto 1/variance
 
-  :HIERARCHICAL -- p(variance) \propto (variance)^-1/2, recommended by
-  Gelman (2006) for hierarchical models with at least 3 groups, as a first
-  attempt.
+;;   :HIERARCHICAL -- p(variance) \propto (variance)^-1/2, recommended by
+;;   Gelman (2006) for hierarchical models with at least 3 groups, as a first
+;;   attempt.
 
-  :NONE -- no prior, just gives the likelihood (may not be proper)."
-  (let* ((alpha (+ (/ n 2d0)
-                   (ecase prior
-                     (:none -1d0)
-                     (:hierarchical -0.5d0)
-                     (:reference 0d0)))))
-    (r-inverse-gamma alpha (/ ss 2d0))))
+;;   :NONE -- no prior, just gives the likelihood (may not be proper)."
+;;   (let* ((alpha (+ (/ n 2d0)
+;;                    (ecase prior
+;;                      (:none -1d0)
+;;                      (:hierarchical -0.5d0)
+;;                      (:reference 0d0)))))
+;;     (r-inverse-gamma alpha (/ ss 2d0))))
 
 ;;; linear regression with known variance
 ;;; 
@@ -125,32 +125,27 @@ LR-KV-DUMMIES to generate dummy observations from a prior."
 
 (defun multivariate-normal-model (y &key prior)
   "Estimate a multivariate normal model.  See p85-88 of Bayesian Data
-Analysis, 2nd edition.  If prior is not given, it is the reference prior."
+Analysis, 2nd edition.  If prior is not given, the reference prior is used."
   (declare (optimize debug))
   (let+ (((n nil) (array-dimensions y))
          ((&values sse mean) (matrix-sse y))
-         (kappa n)
-         (nu n))
-    (when prior
-      (check-type prior multivariate-normal-model)
-      (let ((kappa0 (kappa prior))
-            (mean0 (mean prior)))
-        (incf kappa kappa0)
-        (incf nu (nu prior))
-        (setf sse (e+ (as-matrix sse)
-                      (as-matrix (inverse-scale prior))
-                      (mm (e- mean mean0) t
-                          (/ (* kappa0 n) kappa))))
-        (setf mean (e+ (e* (mean prior) (/ kappa0 kappa))
-                       (e* mean (/ n kappa))))))
-    (make-instance 'multivariate-normal-model :inverse-scale sse
-                   :nu nu :kappa kappa :mean mean)))
+         ((&values mu0 kappa0 nu0 inverse-scale0)
+          (aetypecase prior
+            (multivariate-normal-model
+             (values (mean it) (kappa it) (nu it) (inverse-scale it)))
+            (null
+             (values (zero) 0d0 -1 (zero)))))
+         (kappa (+ kappa0 n))
+         (nu (+ nu0 n))
+         (mu (e+ (e* (/ kappa0 kappa) mu0) (e* (/ n kappa) mean)))
+         (inverse-scale (e+ inverse-scale0
+                            sse
+                            (mm (e- mean mu0) t (/ (* kappa0 n) kappa)))))
+    (make-instance 'multivariate-normal-model :inverse-scale inverse-scale
+                                              :nu nu :kappa kappa :mean mu)))
 
-(defmethod draw ((multivariate-normal-model multivariate-normal-model) &key
-                 as-distribution?)
+(defmethod draw ((multivariate-normal-model multivariate-normal-model) &key)
   (let+ (((&slots-r/o inverse-scale nu kappa mean) multivariate-normal-model)
          (sigma (draw (r-inverse-wishart nu inverse-scale)))
          (mean (draw (r-multivariate-normal mean sigma) :scale (/ kappa))))
-    (if as-distribution?
-        (r-multivariate-normal mean sigma)
-        (values mean sigma))))
+    (r-multivariate-normal mean sigma)))

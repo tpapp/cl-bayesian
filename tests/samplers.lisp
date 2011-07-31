@@ -1,6 +1,6 @@
 ;;; -*- Mode:Lisp; Syntax:ANSI-Common-Lisp; Coding:utf-8 -*-
 
-(in-package cl-bayesian-tests)
+(in-package :cl-bayesian-tests)
 
 (deftestsuite samplers-tests (cl-bayesian-tests)
   ())
@@ -16,52 +16,56 @@ one."
          (posterior2 (funcall posterior-function acc2 posterior1)))
     (values posterior2 (funcall posterior-function acc))))
 
-(defun simulate-ranks (prior simulate estimate &key (m 40) (n 500)
-                                                    (draw-vector #'draw))
-  (let+ ((theta0 (funcall draw-vector prior))
-         (y (funcall simulate m theta0))
-         (posterior (funcall estimate y prior))
-         (theta+ (filled-array n (lambda ()
-                                   (funcall draw-vector posterior)))))
-    (calculate-empirical-ranks (ensure-vector theta0)
-                               (ensure-matrix (combine theta+) :column))))
-
-
+(defun simulate-ranks (prior simulate estimate parameters 
+                       &key (n 500) (m 50))
+  "Draw a value from PRIOR, call (SIMULATE DRAW) to simulate data,
+then (ESTIMATE DATA PRIOR) to estimate the posterior.  Obtain N draws from the
+latter, and return empirical ranks.  PARAMETERS is used to convert
+prior/posterior draws to vectors."
+  (filled-array m
+                (lambda ()
+                  (let+ ((theta0 (draw prior))
+                         (y (funcall simulate theta0))
+                         (posterior (funcall estimate y prior))
+                         (theta+ (filled-array n (generator posterior))))
+                    (calculate-empirical-ranks (funcall parameters theta0)
+                                               (combine
+                                                (map1 parameters theta+)))))))
 
 (addtest (samplers-tests)
+  univariate-normal-error-2phase
   (let+ (((&values p12 p) (2phase-posterior 10 #'mean-sse-accumulator
                                             #'univariate-normal-error))
-         (#(rank)
-           (simulate-ranks (r-inverse-chi-square 9 2d0)
-                           (lambda (m v)
-                             (filled-array m (generator (r-normal 0 v))))
-                           (lambda (y prior)
-                             (univariate-normal-error 
-                              (sweep (mean-sse-accumulator) y)
-                              prior)))))
+         (ranks+
+          (simulate-ranks (r-inverse-chi-square 9 2d0)
+                          (lambda (v)
+                            (filled-array 50 (generator (r-normal 0 v))))
+                          (lambda (y prior)
+                            (univariate-normal-error 
+                             (sweep (mean-sse-accumulator) y)
+                             prior))
+                          #'vector)))
     (ensure-same p12 p :test #'==)
-    (ensure (< 0.01 rank 0.99))))
+    (ensure (< (first* (calculate-abs-z-statistics ranks+)) 2d0))))
 
 (addtest (samplers-tests)
+  univariate-normal-model-2phase
   (let+ (((&values p12 p) (2phase-posterior 10 #'mean-sse-accumulator
                                             #'univariate-normal-model))
          (prior (univariate-normal-model
                  (sweep (mean-sse-accumulator) #(ivec 10))))
-         (#(rank1 rank2)
-           (simulate-ranks prior
-                           (lambda+ (m #(mu s^2))
-                             (filled-array m (generator (r-normal mu s^2))))
-                           (lambda (y prior)
-                             (univariate-normal-model
-                              (sweep (mean-sse-accumulator) y)
-                              prior))
-                           :draw-vector (lambda (p)
-                                          (let+ (((&values mu s^2) (draw p)))
-                                            (vector mu s^2))))))
+         (ranks+
+          (simulate-ranks prior
+                          (lambda+ (model-draw)
+                            (filled-array 50 (generator model-draw)))
+                          (lambda (y prior)
+                            (univariate-normal-model
+                             (sweep (mean-sse-accumulator) y)
+                             prior))
+                          (lambda (p)
+                            (vector (mean p) (variance p))))))
     (ensure-same p12 p :test #'==)
-    (ensure (< 0.01 rank1 0.99))
-    (ensure (< 0.01 rank2 0.99))
-    (vector rank1 rank2)))
+    (ensure (< (emax (calculate-abs-z-statistics ranks+)) 2d0))))
 
 (addtest (samplers-tests)
   lr-kv-dummy-2phase
@@ -110,9 +114,22 @@ one."
          ;; ;; two steps
          (p1 (multivariate-normal-model (sub y (cons 0 n) t)))
          (p2-1 (multivariate-normal-model (sub y (cons n nil) t)
-                                          :prior p1)))
+                                          :prior p1))
+         (ranks
+          (simulate-ranks p2
+                          (lambda+ (model-draw)
+                            (combine (filled-array 50
+                                                   (generator model-draw))))
+                          (lambda (y prior)
+                            (multivariate-normal-model y :prior prior))
+                          (lambda (p)
+                            (concat 'double-float 
+                                    (mean p)
+                                    (flatten-array 
+                                     (as-array (variance p))))))))
     (ensure-same (mean p2) (mean p2-1))
     (ensure-same (nu p2) (nu p2-1))
     (ensure-same (as-matrix (inverse-scale p2)) (inverse-scale p2-1))
-    (ensure-same (kappa p2) (kappa p2-1))))
+    (ensure-same (kappa p2) (kappa p2-1))
+    (ensure (small-zs? (calculate-abs-z-statistics ranks)))))
   
