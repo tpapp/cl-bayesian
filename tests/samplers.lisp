@@ -44,9 +44,11 @@ prior/posterior draws to vectors."
                             (univariate-normal-error 
                              (sweep (mean-sse-accumulator) y)
                              prior))
-                          #'vector)))
+                          #'vector))
+         (z-statistics (calculate-abs-z-statistics ranks+)))
     (ensure-same p12 p :test #'==)
-    (ensure (< (first* (calculate-abs-z-statistics ranks+)) 2d0))))
+    (format t "z-statistics: ~A~%" z-statistics)
+    (ensure (< (first* z-statistics) 2d0))))
 
 (addtest (samplers-tests)
   univariate-normal-model-2phase
@@ -63,9 +65,11 @@ prior/posterior draws to vectors."
                              (sweep (mean-sse-accumulator) y)
                              prior))
                           (lambda (p)
-                            (vector (mean p) (variance p))))))
+                            (vector (mean p) (variance p)))))
+         (z-statistics (calculate-abs-z-statistics ranks+)))
     (ensure-same p12 p :test #'==)
-    (ensure (< (emax (calculate-abs-z-statistics ranks+)) 2d0))))
+    (format t "z-statistics: ~A~%" z-statistics)
+    (ensure (< (emax z-statistics) 2d0))))
 
 (addtest (samplers-tests)
   lr-kv-dummy-2phase
