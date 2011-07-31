@@ -11,17 +11,16 @@
            (let+ (((&accessors-r/o mean variance) distribution)
                   (variance (e* factor variance)))
              (if (numberp mean)
-                 (let ((sd (sqrt variance)))
-                   (if nu
-                       (r-t mean (/ sd (t-scale-to-variance-coefficient nu))
-                            nu)
-                       (r-normal mean sd)))
+                 (if nu
+                     (r-t mean (/ (sqrt variance)
+                                  (t-scale-to-variance-coefficient nu))
+                          nu)
+                     (r-normal mean variance))
                  (if nu
                      (r-multivariate-t 
                       mean
-                      (e/ variance (t-scale-to-variance-coefficient nu))
-                      nu)
-                     (r-normal mean variance)))))
+                      (e/ variance (t-scale-to-variance-coefficient nu)) nu)
+                     (r-multivariate-normal mean variance)))))
   (:method ((distribution r-gamma) factor &key)
     (let+ (((&accessors-r/o alpha beta) distribution))
       (r-gamma (/ alpha factor) (* beta factor))))

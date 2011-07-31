@@ -2,6 +2,67 @@
 
 (in-package #:cl-bayesian)
 
+(defun univariate-normal-error (accumulator &optional (prior 0))
+  "Univariate normal error model.  Sum of squared errors and the tally are
+taken from accumulator.  The following priors are accepted:
+
+  - r-inverse-gamma distributions
+
+  - real numbers, corresponding to an inverse-gamma(prior,0) distribution in
+    the limit (which, of course, may not be proper).  Eg prior=0 is usually
+    used as a reference prior."
+  (let+ (((&values a b) (aetypecase prior
+                            (r-inverse-gamma (values (alpha it) (beta it)))
+                            (real (values it 0)))))
+    (r-inverse-gamma (+ (/ (tally accumulator) 2d0) a)
+                     (+ (/ (sse accumulator 0d0) 2d0) b))))
+
+;;;; ****************************************************************
+;;;; Normal-inverse-chi-square distribution.
+;;;;
+;;;; 
+;;;;
+;;;;
+;;;; ****************************************************************
+
+(cl-random::define-rv r-univariate-normal-model (mu kappa alpha beta)
+  (:documentation "sigma^2 ~ inverse-gamma(alpha,beta) and m ~
+   N(mu,s^2/kappa).  Conjugate prior for univariate normal data.  See BDA,
+   Section 3.3.  The reparametrization here is alpha=nu/2 and beta=nu*s^2/2."
+   :==-slots (mu kappa sigma-square))
+  ((mu :type double-float :reader t)
+   (kappa :type double-float :reader t)
+   (sigma-square :type r-inverse-gamma))
+  (cl-random::with-doubles (mu kappa alpha beta)
+    (cl-random::make :mu mu :kappa kappa
+                     :sigma-square (r-inverse-gamma alpha beta)))
+  (draw (&key)
+        (let ((s^2 (draw sigma-square)))
+          (values
+           (draw (r-normal mu (/ s^2 kappa)))
+           s^2))))
+
+(define-indirect-accessors r-univariate-normal-model 
+    r-univariate-normal-model-sigma-square s^2 nu alpha beta)
+
+(defun univariate-normal-model (accumulator &optional prior)
+  (let+ (((&accessors-r/o (n tally) mean sse) accumulator)
+         ((&values mu0 kappa0 alpha0 beta0)
+          (aetypecase prior
+            (r-univariate-normal-model
+             (values (mu it) (kappa it) (alpha it) (beta it)))
+            (null
+             (values 0d0 0d0 -0.5d0 0d0))))
+         (kappa (+ kappa0 n))
+         (mu (/ (+ (* kappa0 mu0) (* n mean)) kappa))
+         (alpha (+ alpha0 (/ n 2)))
+         (beta (+ beta0 (/ (+ sse (/ (* kappa0 n (expt (- mean mu0) 2))
+                                     kappa))
+                           2))))
+    (r-univariate-normal-model mu kappa alpha beta)))
+
+
+
 (defun variance-distribution (ss n prior)
   "When residuals ~ NIID(0,variance), return a posterior distribution for the
 variance with the given prior.  SS is the sum of squared residuals, and N is
@@ -55,15 +116,17 @@ LR-KV-DUMMIES to generate dummy observations from a prior."
   ((inverse-scale :accessor inverse-scale :initarg :inverse-scale)
    (nu :reader nu :initarg :nu :documentation "Degrees of freedom.")
    (kappa :reader kappa :initarg :kappa :documentation "Number of
-   observations (including dummies from prior, may be a fraction).")
+   observations (including dummies from prior, does not have to be an
+   integer).")
    (mean :reader mean :initarg :mean :documentation "Posterior mean."))
   (:documentation "Random variable representing the posterior for a
   multivariate normal distribution estimated with unknown variance, reference
-  or conjugate prior.  Second values return Sigma, the variance matrix."))
+  or conjugate prior.  Second value returned is Sigma, the variance matrix."))
 
 (defun multivariate-normal-model (y &key prior)
   "Estimate a multivariate normal model.  See p85-88 of Bayesian Data
 Analysis, 2nd edition.  If prior is not given, it is the reference prior."
+  (declare (optimize debug))
   (let+ (((n nil) (array-dimensions y))
          ((&values sse mean) (matrix-sse y))
          (kappa n)
@@ -74,8 +137,8 @@ Analysis, 2nd edition.  If prior is not given, it is the reference prior."
             (mean0 (mean prior)))
         (incf kappa kappa0)
         (incf nu (nu prior))
-        (setf sse (e+ sse
-                      (inverse-scale prior)
+        (setf sse (e+ (as-matrix sse)
+                      (as-matrix (inverse-scale prior))
                       (mm (e- mean mean0) t
                           (/ (* kappa0 n) kappa))))
         (setf mean (e+ (e* (mean prior) (/ kappa0 kappa))

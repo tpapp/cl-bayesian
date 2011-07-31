@@ -50,7 +50,8 @@
     "tests"
     :pathname #P"tests/"
     :components
-    ((:file "chains")
+    ((:file "samplers")
+     (:file "chains")
      (:file "dlm"))))
   :depends-on
   (iterate let-plus anaphora alexandria lift cl-num-utils lla cl-random

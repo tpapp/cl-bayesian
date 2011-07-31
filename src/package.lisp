@@ -27,8 +27,8 @@
 
    ;; samplers
    
-   variance-distribution lr-kv-dummies lr-kv multivariate-normal-model kappa
-   inverse-scale
+   univariate-normal-error univariate-normal-model lr-kv-dummies lr-kv
+   multivariate-normal-model kappa inverse-scale
    
    ;; chains
 

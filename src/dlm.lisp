@@ -16,8 +16,12 @@
 (defmethod left-square-root ((a uddu))
   (mm (uddu-u a) (uddu-d a)))
 
-(defmethod as-array ((a uddu) &key hermitian?)
-  (lla::maybe-hermitian (mm (left-square-root a) t) hermitian?))
+(defmethod as-matrix ((a uddu))
+  (mm (left-square-root a) t))
+
+(defmethod as-array ((a uddu) &key copy?)
+  (declare (ignore copy?))
+  (as-array (as-matrix a)))
 
 (defmethod invert ((a uddu) &key)
   (let+ (((&structure-r/o uddu- u d) a))
@@ -168,9 +172,10 @@ parameters.  Returns a vector of draws."
   "Return vectors of the errors of the state equation (omega, mean included)
 and the observation equation (nu) as two values.  Note that the first element
 of OMEGA is NIL as it is not identified."
-  (let* ((n (common-length theta+ y+ parameters+))
+  (let+ ((n (common-length theta+ y+ parameters+))
+         ((&assert n))
          (omega (make-array n :initial-element nil))
-         (nu (make-array n)))
+         (nu (make-array n :initial-element nil)))
     (iter
       (for theta :in-vector theta+ :with-index index)
       (for theta-p :previous theta)
@@ -179,5 +184,6 @@ of OMEGA is NIL as it is not identified."
       (let+ (((&structure-r/o dlm-parameters- G F) parameters))
         (unless (zerop index)
           (setf (aref omega index) (e- theta (mm G theta-p))))
-        (setf (aref nu index) (e- y (mm F theta)))))
+        (when y
+          (setf (aref nu index) (e- y (mm F theta))))))
     (values omega nu)))
