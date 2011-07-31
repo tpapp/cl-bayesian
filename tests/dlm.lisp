@@ -154,14 +154,6 @@ calculate-abs-z-statistics."
                     (funcall progress-bar)
                     (dlm-simulate-ranks n-draws a0 R0 parameters+)))))
 
-(defun small-zs? (z-statistics &key (threshold 2) (margin 4))
-  "Test if the number of Z statistics larger than THRESHOLD is smaller than
-the expected number when corrected by MARGIN."
-  (let* ((count (count-if (curry #'< threshold) z-statistics))
-         (p (* 2 (- 1 (cdf (r-normal) threshold))))
-         (allowed-large-z (ceiling (* margin p (length z-statistics)))))
-    (<= count allowed-large-z)))
-
 (addtest (dlm-tests)
   dlm-ff-bs-univariate
   (let* ((parameters (make-dlm-parameters :g (clo :double 1 :/)
@@ -175,7 +167,6 @@ the expected number when corrected by MARGIN."
                                       (make-array 10 :initial-element
                                                   parameters)))
          (z-statistics (calculate-abs-z-statistics ranks+)))
-    (format t "z-statistics: ~A~%" z-statistics)
     (ensure (small-zs? z-statistics))))
 
 (addtest (dlm-tests)
@@ -194,5 +185,4 @@ the expected number when corrected by MARGIN."
                                       (make-array 10 :initial-element
                                                   parameters)))
          (z-statistics (calculate-abs-z-statistics ranks+)))
-    (format t "z-statistics: ~A~%" z-statistics)
     (ensure (small-zs? z-statistics))))
