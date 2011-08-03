@@ -55,7 +55,7 @@ prior/posterior draws to vectors."
   (let+ (((&values p12 p) (2phase-posterior 10 #'mean-sse-accumulator
                                             #'univariate-normal-model))
          (prior (univariate-normal-model
-                 (sweep (mean-sse-accumulator) #(ivec 10))))
+                 (sweep (mean-sse-accumulator) (ivec 10))))
          (ranks+
           (simulate-ranks prior
                           (lambda+ (model-draw)
