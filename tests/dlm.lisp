@@ -19,6 +19,26 @@
                  (convert-matrix :hermitian (e+ (mmm g a (transpose g)) h)))))
 
 (addtest (dlm-tests)
+  dlm1-test1
+  ;; checked against results from R/dlm, univariate case
+  (let+ ((parameters (make-dlm1-parameters :W 0.7d0 :V 0.5d0))
+         (y (make-array 10 :initial-element 1d0))
+         ((&values m C-inverse a)
+          (dlm1-forward-filtering 0d0 (dlm1-parameters-W parameters) y
+                                 (make-array 10 :initial-element parameters)))
+         (*lift-equality-test* #'==))
+    (ensure-same m
+                 #(0.5833333 0.8603352 0.9544295 0.9851741 0.9951780
+                   0.9984318 0.9994900 0.9998341 0.9999461 0.9999825))
+    (ensure-same a
+                 #(0.0000000 0.5833333 0.8603352 0.9544295 0.9851741
+                   0.9951780 0.9984318 0.9994900 0.9998341 0.9999461))
+    (ensure-same (map1 (compose #'sqrt #'/) C-inverse)
+                 #(0.5400617 0.5765434 0.5803942 0.5808015 0.5808446
+                   0.5808491 0.5808496 0.5808497 0.5808497 0.5808497))))
+
+(addtest (dlm-tests)
+  dlm-test1
   ;; checked against results from R/dlm, univariate case
   (let+ ((parameters (make-dlm-parameters :g 1 :W 0.7 :mu 0 :F 1 :V 0.5))
          (y (make-array 10 :initial-element #(1)))
@@ -39,6 +59,7 @@
                    (map1 #'uddu-u C-inverse)))))
 
 (addtest (dlm-tests)
+  dlm-test2
   ;; checked against results from R/dlm, bivariate case
   (let+ ((parameters (make-dlm-parameters :g (clo 1 1 :/
                                                   0 1)
@@ -113,46 +134,50 @@
 
 ;;; auxilirary functions for testing backward sampling
 
-(defun dlm-generate-sample (a R parameters+)
-  "Generate a sample for a DLM with given parametes, drawing the first state
-from N(a,R).  Return (values theta+ y+)."
-  (let* ((n (length parameters+))
-         (theta+ (make-array n))
-         (y+ (make-array n)))
-    (dotimes (index n)
-      (let+ (((&structure-r/o dlm-parameters- G W mu F V)
-              (aref parameters+ index))
-             (theta (if (zerop index)
-                        (draw (r-multivariate-normal a R))
-                        (e+ (mm G (aref theta+ (1- index)))
-                            (draw (r-multivariate-normal mu W))))))
-        (setf (aref y+ index)
-              (draw (r-multivariate-normal (mm F theta) V))
-              (aref theta+ index) theta)))
-    (values theta+ y+)))
 
 (defun dlm-flatten-theta (theta+)
   (flatten-array (combine theta+ 'double-float) :copy? t))
 
-(defun dlm-simulate-ranks (n a R parameters+)
+(defun remove-observations (vector &optional (missing-probability 0.05d0))
+  "Return elements, replacing each one with NIL with the given probability.
+Useful for testing."
+  (map1 (lambda (v)
+          (unless (< (random 1d0) missing-probability)
+            v))
+        vector))
+
+(defun dlm-simulate-ranks (n a R parameters+
+                           &key (missing-probability 0.05d0)
+                                univariate?)
   "Return a vector of empirical ranks of simulated data."
-  (let+ (((&values theta0 y+) (dlm-generate-sample a R parameters+))
+  (let+ (((&values generate ff-bs)
+          (if univariate?
+              (values #'dlm1-simulate #'dlm1-ff-bs)
+              (values #'dlm-simulate #'dlm-ff-bs)))
+         ((&values theta0 y+) (funcall generate a R parameters+))
+         (y+ (remove-observations y+ missing-probability))
          (draws (combine
                  (filled-array n
                                (lambda ()
                                  (dlm-flatten-theta
-                                  (dlm-ff-bs a R y+ parameters+)))))))
+                                  (funcall ff-bs
+                                           a R y+ parameters+)))))))
     (calculate-empirical-ranks (dlm-flatten-theta theta0) draws)))
 
 (defun dlm-simulate-ranks+ (n-replications n-draws a0 R0 parameters+
-                             &key (stream *standard-output*))
+                             &key (stream *standard-output*)
+                                  (missing-probability 0.05d0)
+                                  univariate?)
   "Return a vector of ranks which can be passed to
 calculate-abs-z-statistics."
   (let ((progress-bar (text-progress-bar stream n-replications)))
     (filled-array n-replications
                   (lambda ()
                     (funcall progress-bar)
-                    (dlm-simulate-ranks n-draws a0 R0 parameters+)))))
+                    (dlm-simulate-ranks n-draws a0 R0 parameters+
+                                        :missing-probability
+                                        missing-probability
+                                        :univariate? univariate?)))))
 
 (addtest (dlm-tests)
   dlm-ff-bs-univariate
@@ -166,6 +191,18 @@ calculate-abs-z-statistics."
                                       (clo :hermitian :double 2 :/)
                                       (make-array 10 :initial-element
                                                   parameters)))
+         (z-statistics (calculate-abs-z-statistics ranks+)))
+    (ensure (small-zs? z-statistics))))
+
+(addtest (dlm-tests)
+  dlm1-ff-bs
+  (let* ((parameters (make-dlm1-parameters :W 0.05d0 :V 0.02d0))
+         (ranks+ (dlm-simulate-ranks+ 100 200
+                                      0d0
+                                      2d0
+                                      (make-array 10 :initial-element
+                                                  parameters)
+                                      :univariate? t))
          (z-statistics (calculate-abs-z-statistics ranks+)))
     (ensure (small-zs? z-statistics))))
 

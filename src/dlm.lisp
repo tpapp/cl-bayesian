@@ -2,6 +2,143 @@
 
 (in-package #:cl-bayesian)
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; univariate dlm
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(defstruct dlm1-parameters
+  "Dynamic linear model with one-dimensional state and observation vector."
+  (G 1d0 :type double-float)
+  (mu 0d0 :type double-float)
+  (W 1d0 :type double-float)
+  (F 1d0 :type double-float)
+  (V 1d0 :type double-float))
+
+(defun dlm1-step (m C-inverse parameters)
+  "Given the posterior N(m,C), calculate the prior N(a,R) for the next step.
+Return (values a R).  This step should be called each point in time, before
+incorporating observations (if any).  For univariate DLMs."
+  (let+ (((&structure-r/o dlm1-parameters- G mu W) parameters))
+    (values (+ (* G m) mu)
+            (+ W (/ (expt G 2) C-inverse)))))
+
+(defun dlm1-filter (a R Y parameters)
+  "Given the prior N(a,R), the observation Y and the DLM parameters at that
+point, calculate the posterior N(m,C).  Return (values m C).  For univariate
+DLMs."
+  (let+ (((&structure-r/o dlm1-parameters- F V) parameters)
+         (forecast (* F a))            ; mean forecast
+         (F/V (/ F V))
+         (/C (+ (/ R) (* F F/V)))
+         (gain (/ F/V /C)))
+    (values (+ a (* gain (- Y forecast))) /C)))
+
+(defun dlm1-sample (m C-inverse next-theta next-a next-parameters)
+  "Sample backward for DLM.  Return a draw.  For univariate DLMs."
+  (let+ (((&structure-r/o dlm1-parameters- G W) next-parameters)
+         (G/W (/ G W))
+         (/H (+ C-inverse (* G G/W)))
+         (B (/ G/W /H)))
+    (draw (r-normal (+ m (* B (- next-theta next-a))) (/ /H)))))
+
+(defun dlm1-forward-filtering (a0 R0 y+ parameters+)
+  "Forward filtering for univariate dynamic linear models.
+
+Prior on the state is N(a,R), Y+ is a vector of observations, PARAMETERS is a
+vector of DLM-PARAMETERs.  Return the following values:
+
+ - m+, a vector of means
+ - C-inverse+, a vector of UDDU decompositions of C^{-1}
+ - a+, the predicted means."
+  (let* ((a0 (as-double-float a0))
+         (R0 (as-double-float R0))
+         (n (length y+))
+         (m+ (make-array n :element-type 'double-float))
+         (C-inverse+ (make-array n :element-type 'double-float))
+         (a+ (make-array n :element-type 'double-float)))
+    ;; forward filtering
+    (iter
+      (for parameters :in-vector parameters+ :with-index index)
+      (let+ (((&values a R) (if (zerop index)
+                                (values a0 R0)
+                                (let ((m (aref m+ (1- index)))
+                                      (C-inverse (aref C-inverse+
+                                                       (1- index))))
+                                  (dlm1-step m C-inverse parameters)))))
+        (setf (values (aref m+ index) (aref C-inverse+ index))
+              (aif (aref y+ index)
+                   (dlm1-filter a R it parameters)
+                   (values a (/ R)))
+              (aref a+ index) a)))
+    (values m+ C-inverse+ a+)))
+
+(defun dlm1-backward-sampling (m+ a+ C-inverse+ parameters+)
+  "Backward sampling.  Requires the output of dlm1-forward-filtering and the
+parameters.  Returns a vector of draws.  For univariate DLMs."
+  (let* ((n (length m+))
+         (theta+ (make-array n))
+         (last (1- n)))
+    (setf (aref theta+ last)
+          (draw  (r-normal (aref m+ last) (/ (aref C-inverse+ last)))))
+    (iter
+      (for parameters :in-vector parameters+ :downto 1 :with-index index)
+      (setf (aref theta+ (1- index))
+            (dlm1-sample (aref m+ (1- index)) (aref C-inverse+ (1- index))
+                         (aref theta+ index) (aref a+ index) parameters)))
+    theta+))
+
+(defun dlm1-ff-bs (a0 R0 y+ parameters+)
+  "Forward filtering and backward sampling.  Return (values theta+ m+
+  C-inverse+ a+)."
+  (let+ (((&values m+ C-inverse+ a+)
+          (dlm1-forward-filtering a0 R0 y+ parameters+)))
+    (values (dlm1-backward-sampling m+ a+ c-inverse+ parameters+)
+            m+ C-inverse+ a+)))
+
+(defun dlm1-errors (theta+ y+ parameters+)
+  "Return vectors of the errors of the state equation (omega, mean included)
+and the observation equation (nu) as two values.  Note that the first element
+of OMEGA is omitted, as it is not identified."
+  (let+ ((theta+ (as-double-float-vector theta+))
+         (n (common-length theta+ y+ parameters+))
+         ((&assert (and n (plusp n))))
+         (omega (make-array (1- n) :initial-element nil))
+         (nu (make-array n :initial-element nil)))
+    (iter
+      (for theta :in-vector theta+ :with-index index)
+      (for theta-p :previous theta)
+      (for parameters :in-vector parameters+)
+      (for y :in-vector y+)
+      (let+ (((&structure-r/o dlm1-parameters- G mu F) parameters))
+        (unless (zerop index)
+          (setf (aref omega (1- index)) (- theta (* G theta-p) mu)))
+        (when y
+          (setf (aref nu index) (- y (* F theta))))))
+    (values omega nu)))
+
+(defun dlm1-simulate (a R parameters+)
+  "Generate a sample for a DLM with given parametes, drawing the first state
+from N(a,R).  Return (values theta+ y+).  For univariate DLMs."
+  (let* ((n (length parameters+))
+         (theta+ (make-array n :element-type 'double-float))
+         (y+ (make-array n :element-type 'double-float)))
+    (dotimes (index n)
+      (let+ (((&structure-r/o dlm1-parameters- G W mu F V)
+              (aref parameters+ index))
+             (theta (if (zerop index)
+                        (draw (r-normal a R))
+                        (+ (* G (aref theta+ (1- index)))
+                           (draw (r-normal mu W))))))
+        (setf (aref y+ index) (draw (r-normal (* F theta) V))
+              (aref theta+ index) theta)))
+    (values theta+ y+)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; multivariate dlm
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defstruct uddu
   "Decomposition UD^2U^T where D is a diagonal and U is a unitary matrix."
   u d)
@@ -106,7 +243,6 @@ incorporating observations (if any)."
 
 (defun dlm-sample (m C-inverse next-theta next-a next-parameters)
   "Sample backward for DLM.  Return a draw."
-  (declare (optimize debug))
   (let+ (((&structure-r/o dlm-parameters- G W) next-parameters)
          (H-inverse (uddu-update C-inverse 
                                  (xx (mm (transpose G)
@@ -187,3 +323,21 @@ of OMEGA is NIL as it is not identified."
         (when y
           (setf (aref nu index) (e- y (mm F theta))))))
     (values omega nu)))
+
+(defun dlm-simulate (a R parameters+)
+  "Generate a sample for a DLM with given parametes, drawing the first state
+from N(a,R).  Return (values theta+ y+)."
+  (let* ((n (length parameters+))
+         (theta+ (make-array n))
+         (y+ (make-array n)))
+    (dotimes (index n)
+      (let+ (((&structure-r/o dlm-parameters- G W mu F V)
+              (aref parameters+ index))
+             (theta (if (zerop index)
+                        (draw (r-multivariate-normal a R))
+                        (e+ (mm G (aref theta+ (1- index)))
+                            (draw (r-multivariate-normal mu W))))))
+        (setf (aref y+ index)
+              (draw (r-multivariate-normal (mm F theta) V))
+              (aref theta+ index) theta)))
+    (values theta+ y+)))
