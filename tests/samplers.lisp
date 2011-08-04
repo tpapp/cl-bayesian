@@ -48,7 +48,7 @@ prior/posterior draws to vectors."
          (z-statistics (calculate-abs-z-statistics ranks+)))
     (ensure-same p12 p :test #'==)
     (format t "z-statistics: ~A~%" z-statistics)
-    (ensure (< (first* z-statistics) 2d0))))
+    (ensure (< (first* z-statistics) 3d0))))
 
 (addtest (samplers-tests)
   univariate-normal-model-2phase
@@ -69,7 +69,7 @@ prior/posterior draws to vectors."
          (z-statistics (calculate-abs-z-statistics ranks+)))
     (ensure-same p12 p :test #'==)
     (format t "z-statistics: ~A~%" z-statistics)
-    (ensure (< (emax z-statistics) 2d0))))
+    (ensure (< (emax z-statistics) 3d0))))
 
 (addtest (samplers-tests)
   lr-kv-dummy-2phase
