@@ -98,9 +98,10 @@ parameters.  Returns a vector of draws.  For univariate DLMs."
             m+ C-inverse+ a+)))
 
 (defun dlm1-errors (theta+ y+ parameters+)
-  "Return vectors of the errors of the state equation (omega, mean included)
-and the observation equation (nu) as two values.  Note that the first element
-of OMEGA is omitted, as it is not identified."
+  "Return vectors of the errors of the state equation (omega, with the mean mu
+which is *not* subtracted) and the observation equation (nu) as two values.
+Note that the first element of OMEGA is omitted, as it is not identified (and
+thus the index is shifted)."
   (let+ ((theta+ (as-double-float-vector theta+))
          (n (common-length theta+ y+ parameters+))
          ((&assert (and n (plusp n))))
@@ -111,9 +112,9 @@ of OMEGA is omitted, as it is not identified."
       (for theta-p :previous theta)
       (for parameters :in-vector parameters+)
       (for y :in-vector y+)
-      (let+ (((&structure-r/o dlm1-parameters- G mu F) parameters))
+      (let+ (((&structure-r/o dlm1-parameters- G F) parameters))
         (unless (zerop index)
-          (setf (aref omega (1- index)) (- theta (* G theta-p) mu)))
+          (setf (aref omega (1- index)) (- theta (* G theta-p))))
         (when y
           (setf (aref nu index) (- y (* F theta))))))
     (values omega nu)))
