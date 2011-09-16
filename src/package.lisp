@@ -49,7 +49,7 @@
    dlm1-parameters make-dlm1-parameters dlm1-parameters-G dlm1-parameters-mu
    dlm1-parameters-W dlm1-parameters-F dlm1-parameters-V dlm1-step dlm1-filter
    dlm1-sample dlm1-forward-filtering dlm1-backward-sampling dlm1-ff-bs
-   dlm1-simulate
+   dlm1-errors dlm1-simulate
    
    uddu uddu-u uddu-d uddu-update uddu-multiply-update dlm-parameters
    make-dlm-parameters dlm-parameters-G dlm-parameters-mu dlm-parameters-W
