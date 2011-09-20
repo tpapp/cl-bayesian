@@ -5,11 +5,13 @@
 (defparameter *suggested-minimum-burn-in* 200)
 
 (defun check-burn-in (burn-in)
-  "Check that burn-in is above the suggested minimum (when defined)."
+  "Check that burn-in is above the suggested minimum (when defined).  Does not
+return a value, called for side effects (conditions)."
   (when (and *suggested-minimum-burn-in*
              (< burn-in *suggested-minimum-burn-in*))
     (warn "Burn-in ~A is below suggested minimum burn-in (~A)."
-          burn-in *suggested-minimum-burn-in*)))
+          burn-in *suggested-minimum-burn-in*))
+  (values))
 
 (defun calculate-burn-in (n burn-in-fraction)
   "Calculate burn-in from burn-in fraction and total number of samples.
@@ -88,42 +90,48 @@ Ranges narrower than MINIMUM-LENGTH are discarded."
                          accumulators for each variable."))
   (:documentation "Statistics for the sample from a single MCMC chain."))
 
-(defun mcmc-statistics (mcmc-sample 
+(defun mcmc-statistics (sample
                         &key (divisions 20) (minimum-length 100)
                              sse-ranges (lags 10)
                              (accumulator-generator #'mean-sse-accumulator)
                              (burn-in-fraction 0.5))
   "Helper function to calculate an MCMC-STATISTICS object from a sample."
-  (let+ (((&slots-r/o model elements) mcmc-sample)
-         ((nrow ncol) (array-dimensions elements))
-         (accumulators (filled-array ncol accumulator-generator))
+  (let+ ((model (model (first* sample)))
+         (n-parameters (layout-length (scalar-parameters-layout model)))
+         (n-sample (length sample))
+         (accumulators (filled-array n-parameters accumulator-generator))
          (autocovariance-accumulators
-          (filled-array ncol (curry #'autocovariance-accumulator lags)))
+          (filled-array n-parameters (curry #'autocovariance-accumulator lags)))
          (sse-ranges (aif sse-ranges
                           it
                           (calculate-psrf-ranges 
-                           nrow
+                           n-sample
                            :divisions divisions
                            :minimum-length minimum-length
                            :burn-in-fraction burn-in-fraction)))
-         (burn-in (aprog1 (calculate-burn-in nrow burn-in-fraction)
-                    (check-burn-in it)))
+         (burn-in (calculate-burn-in n-sample burn-in-fraction))
          ((&values subranges index-lists)
-          (subranges sse-ranges :shadow-ranges `((,burn-in . ,nrow))))
+          (subranges sse-ranges :shadow-ranges `((,burn-in . ,n-sample))))
          (sse-accumulators
           (combine
            (map 'vector
                 (lambda+ ((start . end))
                   (let ((sse-accumulators
-                         (filled-array ncol #'mean-sse-accumulator)))
-                    (loop for row-index from start below end do
-                      (dotimes (column-index ncol)
-                        (let ((value (aref elements row-index column-index)))
-                          (add (aref sse-accumulators column-index) value)
-                          (when (<= burn-in row-index)
-                            (add (aref accumulators column-index) value)
+                         (filled-array n-parameters #'mean-sse-accumulator)))
+                    (loop for sample-index from start below end do
+                      (let+ (((&accessors-r/o scalar-parameters)
+                              (aref sample sample-index)))
+                        (iter
+                          (for parameter :in-vector scalar-parameters
+                               :with-index parameter-index)
+                          (for sse-accumulator :in-vector sse-accumulators)
+                          (add sse-accumulator parameter)
+                          (when (<= burn-in sample-index)
+                            (add (aref accumulators parameter-index)
+                                 parameter)
                             (add (aref autocovariance-accumulators 
-                                       column-index) value)))))
+                                       parameter-index)
+                                 parameter)))))
                     sse-accumulators))
                 subranges)))
          (sse-accumulators
@@ -134,6 +142,9 @@ Ranges narrower than MINIMUM-LENGTH are discarded."
                                              (coerce index-list 'vector))))
                       (collect (pool* accumulators) :result-type vector))))
                 (subarrays 1 (transpose sse-accumulators)))))
+    ;; check burn-in
+    (check-burn-in burn-in)
+    ;; return results
     (make-instance 'mcmc-statistics
                    :model model
                    :accumulators accumulators
@@ -153,6 +164,8 @@ Ranges narrower than MINIMUM-LENGTH are discarded."
   "Calculate summaries of column statistics."
   (let+ ((mcmc-statistics (coerce mcmc-statistics 'vector))
          (model (common-model mcmc-statistics))
+         (sse-ranges (common mcmc-statistics :key #'sse-ranges :test #'equalp
+                             :error "SSE ranges are not compatible."))
          ((&flet pool-chains (accessor transformation reduction)
             ;; Extract vector of statistics from each chain using ACCESSOR,
             ;; apply TRANSFORMATION, then pool them using REDUCTION
@@ -177,8 +190,7 @@ Ranges narrower than MINIMUM-LENGTH are discarded."
                        #'autocorrelations
                        #'mean))
          ;; pooled accumulators
-         (accumulators (pool-chains #'accumulators #'identity #'pool*))
-         (sse-ranges (common mcmc-statistics :key #'sse-ranges :test #'equalp)))
+         (accumulators (pool-chains #'accumulators #'identity #'pool*)))
     (assert sse-ranges)
     (make-instance 'mcmc-summary
                    :model model :psrf psrf
@@ -186,20 +198,15 @@ Ranges narrower than MINIMUM-LENGTH are discarded."
                    :mean-autocorrelations mean-autocorrelations
                    :psrf-ranges sse-ranges)))
 
-(defun pool-samples (mcmc-samples &key (burn-in-fraction 0.5))
+(defun pool-samples (samples &key (burn-in-fraction 0.5))
   "Pool MCMC samplers, discarding BURN-IN-FRACTION."
-  (make-instance 'mcmc-sample
-                 :elements
-                 (stack* t :v
-                         (map 'list
-                              (lambda (sample)
-                                (asub (elements sample)
-                                      (cons (calculate-burn-in 
-                                             (nrow it) burn-in-fraction)
-                                            nil)
-                                      t))
-                              mcmc-samples))
-                 :model (common-model mcmc-samples)))
+  ;; does not check model
+  (stack* t :v
+          (map 'list
+               (lambda (sample)
+                 (subseq sample
+                         (calculate-burn-in (length sample) burn-in-fraction)))
+               samples)))
 
 ;; (defun psrf-summary-quantiles (mcmc-statistics-summary
 ;;                                &key (quantiles #(0d0 0.025d0 0.25d0 0.5d0

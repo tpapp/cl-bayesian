@@ -13,15 +13,7 @@
 
 (defgeneric scalar-parameters-layout (model)
   (:documentation "Return a layout specification for scalar parameters.  Has
-  to be constant for the same model, regardless of the chain or the state."))
-
-(defgeneric parameters-layout (model)
-  (:documentation "Return the layout of parameters.  Has to be constant for
-  the same model, regardless of the chain or the state.  Note: this method
-  does not have to be defined for custom random-sample versions, see the
-  documentation of the latter.")
-  (:method (model)
-    (scalar-parameters-layout model)))
+  to be constant for the same model, regardless of the state or the chain."))
 
 (defgeneric model (object)
   (:documentation "Return the corresponding model"))
@@ -29,41 +21,9 @@
 (defun common-model (objects)
   "Find the common model."
   (common objects :key #'model :test #'eq
-                  :error "Objects don't refer to the same models."))
+                  :error "Objects don't refer to the same model."))
 
-;;; chain
-
-(defgeneric update-chain (chain)
-  (:documentation "Perform an MCMC update."))
-
-(defgeneric state (chain)
-  (:documentation "Return the current state of the chain.  Note: see the
-  documentation of SAMPLE-CHAIN.)"))
-
-(defgeneric sample-chain (chain n &key thin stream progress-bar-length
-                                       &allow-other-keys)
-  (:documentation "Sample N draws from CHAIN.  Parameters govern
-thinning (every THIN draw is kept), and output of a progress bar (if not
-desired, set PROGRESS-INDICATOR to NIL).
-
-The generic function PARAMETERS and PARAMETERS-LAYOUT do not have to be
-defined for all chain classes, however, the default behavior of SAMPLE-CHAIN
-is to query the current state via PARAMETERS, assuming it is a vector, always
-of the same element-type, with the given layout."))
-
-(defgeneric reset-chain (chain)
-  ;; ?? do I need this?
-  (:documentation "Reset acceptance counters etc.")
-  (:method (object)                     ; do nothing
-    nil))
-
-;;; sample
-
-(defgeneric parameters (sample selection &rest keys)
-  (:documentation "Return the requested parameter object at given INDEX from a
-  Markov chain.  May share structure unless COPY?."))
-
-(defgeneric scalar-parameters (sample index &key copy?)
+(defgeneric scalar-parameters (state &key copy?)
   (:documentation "Return all scalar parameters as a vector.  Element type,
   length and layout (see SCALAR-PARAMETERS-LAYOUT) have to be consistent for
   chains initialized from the same model.  Does not necessarily contain all
@@ -71,63 +31,23 @@ of the same element-type, with the given layout."))
 
 ;;; default implementation, using a flat matrix
 
-(defclass mcmc-sample ()
-  ((model :reader model :initarg :model)
-   (elements :accessor elements :initarg :elements
-             :documentation "sample arranged in a row-major matrix."))
-  (:documentation "MCMC sample of scalar parameters with fixed length,
-  flattened out to a row-major matrix."))
-
-(defmethod nrow ((mcmc-sample mcmc-sample))
-  (nrow (elements mcmc-sample)))
-
-(defmethod parameters ((mcmc-sample mcmc-sample) selection &rest keys)
-  (let+ (((&slots-r/o model elements) mcmc-sample)
-         (row-indexes (sub-resolve-selection selection (nrow elements) nil t))
-         ((&values position layout)
-          (apply #'layout-position (parameters-layout model) keys))
-         ((&fwrap extractor)
-          (if (consp position)
-              (let+ (((start . end) position)
-                     (length (- end start))
-                     (ncol (ncol elements)))
-                (lambda (row-index)
-                  (layout-ref (displace-array elements length
-                                              (+ start (* ncol row-index)))
-                              layout)))
-              (lambda (row-index)
-                (aref elements row-index position)))))
-    (etypecase row-indexes
-      (fixnum (extractor row-indexes))
-      (vector (map1 #'extractor row-indexes)))))
-
-(defmethod sample-chain (chain n &key (thin 1) (stream *standard-output*)
+(defmethod draw-chain (state n &key (stream *standard-output*)
                                       (progress-bar-length 80))
-  (let+ (((&fwrap progress)
-          (text-progress-bar stream n :character #\*
-                                      :length progress-bar-length))
-         elements)
-    ;; draws that are kept
-    (dotimes (index n)
-      ;; save thinned draw
-      (let+ (((&values thinned-index remainder) (floor index thin)))
-        (when (zerop remainder)
-          (let ((state (state chain)))
-            (unlessf elements
-                     (make-array (list (ceiling n thin) (length state))
-                                 :element-type
-                                 (array-element-type state)))
-            (replace (subarray elements thinned-index) state)))
-        ;; (when (= index burn-in)         ; reset chain after burn-in
-        ;;   (reset-chain chain))
-        )
-      (progress)
-      (update-chain chain))
-    ;; done
-    (make-instance 'mcmc-sample :model (model chain) :elements elements)))
+  "Sample a vector of N draws the Markov chain defined by state.  STREAM and
+PROGRESS-BAR-LENGTH govern the output of the progress bar (if not desired, set
+STREAM to NIL).  Return the updated STATE as the second value.
 
-(defmethod scalar-parameters ((sample mcmc-sample) index &key copy?)
-  (cl-num-utils::maybe-copy-array (subarray (elements sample) index) copy?))
+The sampling works via the method DRAW, which should be defined for the
+states."
+  (let+ (((&fwrap progress)
+          (text-progress-bar stream n 
+                             :character #\* :length progress-bar-length))
+         (draws (make-array n)))
+    (dotimes (index n)
+      (setf (aref draws index) state
+            state (draw state))
+      (progress))
+    (values draws state)))
 
 ;;;  Counter for Metropolis (and Metropolis-Hastings) steps.
 ;;;

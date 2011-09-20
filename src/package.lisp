@@ -17,9 +17,8 @@
 
    ;; mcmc
 
-   initialize-chain parameters-layout scalar-parameters-layout model
-   common-model update-chain state sample-chain reset-chain parameters
-   scalar-parameters  mcmc-sample burn-in 
+   initialize-chain scalar-parameters-layout model
+   common-model scalar-parameters draw-chain
    
    ;; slice-sample
 
@@ -36,7 +35,7 @@
    
    mcmc-statistics accumulators autocovariance-accumulators sse-ranges
    sse-accumulators
--   
+
    mcmc-summary  psrf accumulators mean-autocorrelations psrf-ranges
    summarize-mcmc-statistics pool-samples
    
@@ -56,4 +55,6 @@
    dlm-parameters-F dlm-parameters-V dlm-forward-filtering
    dlm-backward-sampling dlm-ff-bs dlm-errors dlm-simulate
 
-   ))
+   )
+  (:export
+   :draw-chain))

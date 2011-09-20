@@ -19,21 +19,52 @@
     ;; (ensure-same r-upper 2.190318)
     ))
 
+;;; We test by calculating the statistics for IID random elements.
+
+(defstruct iid-model
+  "For testing MCMC diagnostics."
+  (n 5)
+  (generator (generator (r-normal))))
+
+(defmethod scalar-parameters-layout ((model iid-model))
+  (array-layout (iid-model-n model)))
+
+(defmethod draw ((model iid-model) &key)
+  ;; usually we there are no DRAW methods for models, but in the IID case it
+  ;; makes sense
+  (let+ (((&structure-r/o iid-model- n generator) model))
+    (make-iid-state :model model :elements (filled-array n generator))))
+
+(defstruct iid-state
+  "For testing MCMC diagnostics.  Of course not a state in the actual sense."
+  model
+  elements)
+
+(defmethod model ((state iid-state))
+  (iid-state-model state))
+
+(defmethod draw ((state iid-state) &key)
+  (let+ (((&structure-r/o iid-state- model) state))
+    (draw model)))
+
+(defmethod scalar-parameters ((state iid-state) &key copy?)
+  (maybe-copy-array (iid-state-elements state) copy?))
+
 (addtest (diagnostics-tests)
   mcmc-statistics-test
-  ;; calculate statistic for random elements
-  (let+ ((elements (filled-array '(50 5) (curry #'random 1d0) 'double-float))
+  (let+ ((model (make-iid-model))
+         (sample (draw-chain (draw model) 50 :stream nil))
          (burn-in 20)
-         (columns (subarrays 1 (transpose (sub elements (cons burn-in nil) t))))
+         (columns*  (subarrays 1 (transpose 
+                                (combine (map1 #'iid-state-elements
+                                               sample)))))
+         (columns (map1 (lambda (c) (subseq c burn-in)) columns*))
          (lags 4)
-         (model (gensym))
-         (sample (make-instance 'mcmc-sample :model model :elements elements))
          (accumulator-generator #'mean-sse-accumulator)
          (statistics 
           (mcmc-statistics sample :divisions 3 :minimum-length 0 :lags lags
                                   :accumulator-generator accumulator-generator
-                                  :burn-in-fraction (/ burn-in 
-                                                       (nrow elements))))
+                                  :burn-in-fraction (/ burn-in (length sample))))
          ((&slots-r/o sse-ranges) statistics)
          (*lift-equality-test* #'==))
     ;; accumulators for columns
@@ -42,7 +73,7 @@
                        columns))
     ;; sse accumulators
     (iter
-      (for column :in-vector (subarrays 1 (transpose elements)))
+      (for column :in-vector columns*)
       (for sse-accumulator :in-vector (sse-accumulators statistics))
       (let* ((accumulators (map 'vector (lambda+ ((start . end))
                                           (sweep (mean-sse-accumulator)
@@ -60,27 +91,26 @@
   ;; In this test the period after burn-in is not composed of the apparent
   ;; sse-ranges, the purpose of this test is to see if the statistics are
   ;; calculated correctly.
-  (let+ ((nrow 200)
-         (ncol 2)
-         (matrix (filled-array (list nrow ncol) (curry #'random 1d0)
-                               'double-float))
-         (model (gensym))
-         (burn-in (floor nrow 3))
-         (mcmc-sample
-          (make-instance 'mcmc-sample :model model :elements matrix))
+  (let+ ((n-sample 200)
+         (n-parameters 2)
+         (model (make-iid-model :n n-parameters))
+         (sample (draw-chain (draw model) n-sample :stream nil))
+         (burn-in (floor n-sample 3))
          (sse-ranges #((20 . 40) (60 . 120) (100 . 180)))
          (lags 5)
          ((&slots-r/o (model2 model) (sse-ranges2 sse-ranges)
                       autocovariance-accumulators sse-accumulators)
-          (mcmc-statistics mcmc-sample :sse-ranges sse-ranges :lags lags
-                                       :burn-in-fraction (/ burn-in nrow)))
+          (mcmc-statistics sample :sse-ranges sse-ranges :lags lags
+                                  :burn-in-fraction (/ burn-in n-sample)))
          ((&flet+ sweep-with-accumulators
               ((start . end) accumulator-generator)
-            (aprog1 (filled-array ncol accumulator-generator)
-              (loop for row-index from start below end do
-                (loop for col-index below ncol do
-                  (add (aref it col-index)
-                       (aref matrix row-index col-index)))))))
+            (let ((acc (filled-array n-parameters accumulator-generator)))
+              (loop for sample-index from start below end do
+                (loop for p across (iid-state-elements
+                                    (aref sample sample-index))
+                      for a across acc
+                      do (add a p)))
+              acc)))
          (*lift-equality-test* #'==)
          (partial-matrix (combine sse-accumulators)))
     (iter
@@ -92,49 +122,40 @@
     (ensure-same sse-ranges sse-ranges2
                  :test #'equalp)
     (ensure-same autocovariance-accumulators
-                 (sweep-with-accumulators (cons burn-in nrow)
+                 (sweep-with-accumulators (cons burn-in n-sample)
                                           (curry #'autocovariance-accumulator
                                                  lags)))
     partial-matrix))
 
 (addtest (diagnostics-tests)
   mcmc-summary-test
-  ;; testing mcmc summaries
-  (let+ ((model (gensym))
-         (m 2)                          ; number of variables
-         (n 400)                        ; total length
-         (burn-in 200)
-         (burn-in-fraction (/ burn-in n))
+  ;; testing mcmc summaries for univariate samples built from stencils
+  (let+ ((burn-in-fraction 0.4)
          (lag 10)
-         ((&flet make-sample (stencil &key (model model) (burn-in burn-in)
-                                      (m m) (n n))
-            (let ((elements (make-array (list n m)))
-                  (stencil (coerce stencil 'vector))
-                  (stencil-length (length stencil)))
-              (dotimes (index (array-total-size elements))
-                (setf (row-major-aref elements index)
-                      (aref stencil (mod index stencil-length))))
-              (make-instance 'mcmc-sample :elements elements :model model))))
+         (model (make-iid-model :n 1))
+         ((&flet make-sample (stencil &key (model model) (n 600))
+            "Return a sample of length N by repeating STENCIL."
+            (iter
+              (with stencil := (map 'vector #'vector stencil))
+              (with stencil-length := (length stencil))
+              (for index :below n)
+              (collect 
+                  (make-iid-state :model model
+                                  :elements (aref stencil (mod index stencil-length)))
+                :result-type vector))))
          (samples (mapcar #'make-sample
                           '((0 -1 0 0)
                             (1 2 0 0)
                             (3 5 7 11 13 17))))
-         (crude-mean 
-          (mean (subarrays 1 (stack* t :v 
-                                     (mapcar (lambda (s)
-                                               (sub (elements s)
-                                                    (cons burn-in nil) t))
-                                             samples)))))
-         ((&flet sample-autocorrelations (sample)
-            (map1 (rcurry #'autocorrelations lag)
-                  (subarrays 1 (transpose (sub (elements sample)
-                                               (cons burn-in nil) t))))))
-         (crude-autocorrelations
-          (map1 #'mean
-                (subarrays 1
-                           (transpose
-                            (combine (map 'vector #'sample-autocorrelations
-                                          samples))))))
+         (columns (mapcar (lambda (s)
+                            (map1 (compose #'first* #'iid-state-elements)
+                                  (subseq s
+                                          (cl-bayesian::calculate-burn-in
+                                           (length s) burn-in-fraction))))
+                          samples))
+         (crude-mean (mean (stack* t :v columns)))
+         (crude-autocorrelations (mean (map1 (rcurry #'autocorrelations lag)
+                                             columns)))
          (statistics 
           (mapcar (lambda (s) 
                     (mcmc-statistics s :burn-in-fraction burn-in-fraction))
@@ -143,17 +164,16 @@
          ((&flet summarize-incompatible-chains (&rest arguments)
             (summarize-mcmc-statistics
              (list (first statistics)
-                   (scalar-statistics (apply #'make-sample '(1)
-                                             arguments))))))
+                   (mcmc-statistics (apply #'make-sample '(1) arguments)
+                                    :burn-in-fraction burn-in-fraction)))))
          (*lift-equality-test* #'==))
     ;; check mean and autocovariance
-    (ensure-same (map1 #'mean (accumulators summary)) crude-mean)
-    (ensure-same (mean-autocorrelations summary) crude-autocorrelations)
+    (ensure-same (map1 #'mean (accumulators summary)) (vector crude-mean))
+    (ensure-same (mean-autocorrelations summary) (vector crude-autocorrelations))
     ;; incompatible chains should give errors
-    (ensure-error (summarize-incompatible-chains :model 'foo))
-    ;; (ensure-error (summarize-incompatible-chains :burn-in 111))
-    (ensure-error (summarize-incompatible-chains :m 9))
-    (ensure-error (summarize-incompatible-chains :n 17))))
+    (ensure-error (summarize-incompatible-chains :model (make-iid-model :n 2)))
+    (ensure-error (summarize-incompatible-chains :n 977))))
+
 
 ;;; old implementation of psrf working directly with sequences saved here for
 ;;; comparison and testing purposes
