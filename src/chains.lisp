@@ -2,7 +2,12 @@
 
 (in-package #:cl-bayesian)
 
-(defparameter *suggested-minimum-burn-in* 200)
+(defparameter *suggested-minimum-burn-in* 200
+  "The suggested minimum number of observations discarded as burn-in.  Using
+less than this generates a warning.")
+
+(defparameter *default-burn-in-fraction* 0.5
+  "The default fraction of observations discarded as burn-in.")
 
 (defun check-burn-in (burn-in)
   "Check that burn-in is above the suggested minimum (when defined).  Does not
@@ -13,11 +18,15 @@ return a value, called for side effects (conditions)."
           burn-in *suggested-minimum-burn-in*))
   (values))
 
-(defun calculate-burn-in (n burn-in-fraction)
+(defun calculate-burn-in (n &optional (burn-in-fraction *default-burn-in-fraction*))
   "Calculate burn-in from burn-in fraction and total number of samples.
 Note: efined as a separate function for consistency of rounding."
   (assert (within? 0 burn-in-fraction 1))
   (ceiling (* n burn-in-fraction)))
+
+(defun discard-burn-in (samples &optional (burn-in-fraction *default-burn-in-fraction*))
+  "Discard the burn-in from the samples."
+  (subseq samples (calculate-burn-in (length samples) burn-in-fraction)))
 
 (defstruct psrf 
   "Potential scale reduction factor."
@@ -64,8 +73,10 @@ and Gelman (1998)."
                :V V
                :W w)))
 
-(defun calculate-psrf-ranges (n &key (divisions 20) (burn-in-fraction 0.5)
-                                     (minimum-length 100))
+(defun calculate-psrf-ranges (n 
+                              &key (divisions 20)
+                                   (burn-in-fraction *default-burn-in-fraction*)
+                                   (minimum-length 100))
   "Calculate ranges for PSRF.  Return as a list of (start . end) values.
 Ranges narrower than MINIMUM-LENGTH are discarded."
   (iter
@@ -94,7 +105,7 @@ Ranges narrower than MINIMUM-LENGTH are discarded."
                         &key (divisions 20) (minimum-length 100)
                              sse-ranges (lags 10)
                              (accumulator-generator #'mean-sse-accumulator)
-                             (burn-in-fraction 0.5))
+                             (burn-in-fraction *default-burn-in-fraction*))
   "Helper function to calculate an MCMC-STATISTICS object from a sample."
   (let+ ((model (model (first* sample)))
          (n-parameters (layout-length (scalar-parameters-layout model)))
@@ -198,7 +209,7 @@ Ranges narrower than MINIMUM-LENGTH are discarded."
                    :mean-autocorrelations mean-autocorrelations
                    :psrf-ranges sse-ranges)))
 
-(defun pool-samples (samples &key (burn-in-fraction 0.5))
+(defun pool-samples (samples &key (burn-in-fraction *default-burn-in-fraction*))
   "Pool MCMC samplers, discarding BURN-IN-FRACTION."
   ;; does not check model
   (stack* t :v

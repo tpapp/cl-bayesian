@@ -6,7 +6,7 @@
 
 ;;; model
 
-(defgeneric initialize-chain (model &key &allow-other-keys)
+(defgeneric start-chain (model &key &allow-other-keys)
   (:documentation "Initialize a Markov chain for drawing from MODEL, not
   necessarily in a deterministic manner; other arguments may be used to
   specify initial points or overdispersion."))

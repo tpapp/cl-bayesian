@@ -17,7 +17,7 @@
 
    ;; mcmc
 
-   initialize-chain scalar-parameters-layout model
+   start-chain scalar-parameters-layout model
    common-model scalar-parameters draw-chain
    
    ;; slice-sample
@@ -31,12 +31,14 @@
    
    ;; chains
 
+   *suggested-minimum-burn-in**default-burn-in-fraction* discard-burn-in
+
    calculate-psrf psrf-r psrf-v psrf-w calculate-psrf-ranges
    
    mcmc-statistics accumulators autocovariance-accumulators sse-ranges
    sse-accumulators
 
-   mcmc-summary  psrf accumulators mean-autocorrelations psrf-ranges
+   mcmc-summary psrf accumulators mean-autocorrelations psrf-ranges
    summarize-mcmc-statistics pool-samples
    
    ;; validation
@@ -55,6 +57,4 @@
    dlm-parameters-F dlm-parameters-V dlm-forward-filtering
    dlm-backward-sampling dlm-ff-bs dlm-errors dlm-simulate
 
-   )
-  (:export
-   :draw-chain))
+   ))
