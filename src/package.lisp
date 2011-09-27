@@ -47,14 +47,17 @@
 
    ;; dlm
 
-   dlm1-parameters make-dlm1-parameters dlm1-parameters-G dlm1-parameters-mu
-   dlm1-parameters-W dlm1-parameters-F dlm1-parameters-V dlm1-step dlm1-filter
-   dlm1-sample dlm1-forward-filtering dlm1-backward-sampling dlm1-ff-bs
-   dlm1-errors dlm1-simulate
-   
-   uddu uddu-u uddu-d uddu-update uddu-multiply-update dlm-parameters
-   make-dlm-parameters dlm-parameters-G dlm-parameters-mu dlm-parameters-W
-   dlm-parameters-F dlm-parameters-V dlm-forward-filtering
-   dlm-backward-sampling dlm-ff-bs dlm-errors dlm-simulate
+   dlm-evolution1 dlm-evolution1-G dlm-evolution1-mu dlm-evolution1-W
+
+   dlm-observation1 dlm-observation1-F dlm-observation1-V
+
+   uddu uddu-u uddu-d uddu-update uddu-multiply-update
+
+   ;; dlm-evolution dlm-evolution-G dlm-evolution-mu dlm-evolution-W
+
+   ;; dlm-observation dlm-observation-F dlm-observation-V
+
+   dlm-forward-filtering dlm-backward-sampling dlm-ff-bs
+   dlm-errors dlm-simulate
 
    ))
