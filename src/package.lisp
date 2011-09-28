@@ -51,6 +51,8 @@
 
    dlm-observation1 dlm-observation1-F dlm-observation1-V
 
+   dlm make-dlm dlm-length sub-dlm
+
    uddu uddu-u uddu-d uddu-update uddu-multiply-update
 
    ;; dlm-evolution dlm-evolution-G dlm-evolution-mu dlm-evolution-W

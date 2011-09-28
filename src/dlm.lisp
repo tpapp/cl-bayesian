@@ -2,6 +2,8 @@
 
 (in-package #:cl-bayesian)
 
+;;;; DLM specification
+
 (defstruct (dlm-evolution1 (:constructor dlm-evolution1))
   "Evolution equation for DLM, univariate case.  state' ~ N(G*state+mu,W)."
   (G 1d0 :type double-float)
@@ -13,16 +15,49 @@
   (F 1d0 :type double-float)
   (V 1d0 :type double-float))
 
-(defun checked-dlm-length (evolution+ &rest vectors)
+(defstruct (dlm (:constructor make-dlm%))
+  "Specification for a dynamic linear model."
+  evolution+ observation+)
+
+(defun dlm-length (dlm)
+  "Return the length of a DLM."
+  (length (dlm-observation+ dlm)))
+
+(defun checked-dlm-length (dlm &rest vectors)
   "Return the length of a DLM, checking consistency."
-  (check-type evolution+ vector)
-  (let ((n (1+ (length evolution+))))
+  (let ((n (dlm-length dlm)))
     (loop for v in vectors do
       (check-type v vector)
       (assert (= n (length v))))
     n))
 
-(defgeneric dlm-step (mC evolutionl)
+(defun make-dlm (evolution+ observation+ 
+                 &key (length
+                       (cond
+                         ((vectorp evolution+) (1+ (length evolution+)))
+                         ((vectorp observation+) (length observation+))
+                         (t (error "Can't infer length when the other ~
+                                    arguments are not vectors.")))))
+  "Create a dynamic linear model.  Objects other than vectors are accepted and
+will be recycled appropriately.  LENGTH should be specified when none of the
+other arguments are vectors."
+  (flet ((ensure-vector (object length)
+           (if (vectorp object)
+               (prog1 object
+                 (assert (= length (length object))))
+               (make-array length :initial-element object))))
+    (make-dlm% :evolution+ (ensure-vector evolution+ (1- length))
+               :observation+ (ensure-vector observation+ length))))
+
+(defun sub-dlm (dlm start &optional (end (dlm-length dlm)))
+  "Return a contiguous part of a DLM."
+  (let+ (((&structure-r/o dlm- evolution+ observation+) dlm))
+    (make-dlm% :evolution+ (subseq evolution+ start (1- end))
+               :observation+ (subseq observation+ start end))))
+
+;;;; single-step building blocks for recursive methods
+
+(defgeneric dlm-step (mC evolution)
   (:documentation "Return the updated distribution.")
   (:method ((mc r-normal) (evolution dlm-evolution1))
     (let+ (((&accessors-r/o (m mean) (C variance)) mC)
@@ -57,10 +92,16 @@
            (B (* G/W H)))
       (draw (r-normal (+ m (* B (- next-draw next-a))) H)))))
 
-(defun dlm-forward-filtering (aR evolution+ observation+ data+)
+;;;; user interface
+;;; 
+;;; The convention for argument order should be
+;;;;  aR evolution+ observation+ data+ theta+ 
+
+(defun dlm-forward-filtering (initial-distribution dlm data+)
   "Forward filtering for univariate dynamic linear models."
-  (let* ((n (checked-dlm-length evolution+ data+ observation+))
-         (distribution aR)
+  (let+ (((&structure-r/o dlm- evolution+ observation+) dlm)
+         (n (checked-dlm-length dlm data+))
+         (distribution initial-distribution)
          (aR+ (make-array n))
          (mC+ (make-array n)))
     (iter
@@ -74,10 +115,11 @@
             (aref mC+ index) distribution))
     (values mC+ aR+)))
 
-(defun dlm-backward-sampling (mC+ aR+ evolution+)
+(defun dlm-backward-sampling (dlm mC+ aR+)
   "Backward sampling.  Requires the output of dlm-forward-filtering and the
 parameters.  Returns a vector of draws.  For univariate DLMs."
-  (let* ((n (checked-dlm-length evolution+ mC+ aR+))
+  (let+ (((&structure-r/o dlm- evolution+) dlm)
+         (n (checked-dlm-length dlm mC+ aR+))
          (theta+ (make-array n))
          (last (1- n))
          (theta (draw (aref mC+ last))))
@@ -90,12 +132,12 @@ parameters.  Returns a vector of draws.  For univariate DLMs."
             (aref theta+ index) theta))
     theta+))
 
-(defun dlm-ff-bs (aR evolution+ observation+ data+)
+(defun dlm-ff-bs (initial-distribution dlm data+)
   "Forward filtering and backward sampling.  Return (values theta+ m+
   C-inverse+ a+)."
   (let+ (((&values mC+ aR+)
-          (dlm-forward-filtering aR evolution+ observation+ data+)))
-    (values (dlm-backward-sampling mc+ ar+ evolution+) mC+ aR+)))
+          (dlm-forward-filtering initial-distribution dlm data+)))
+    (values (dlm-backward-sampling dlm mc+ ar+) mC+ aR+)))
 
 (defgeneric dlm-evolution-error (evolution state next-state)
   (:documentation "Calculate the evolution error (incudes MU).")
@@ -109,10 +151,11 @@ parameters.  Returns a vector of draws.  For univariate DLMs."
   (:method (observation state (data null))
     nil))
 
-(defun dlm-errors (theta+ data+ evolution+ observation+)
+(defun dlm-errors (dlm data+ theta+)
   "Return vectors of the errors of the state equation (omega, with the mean mu
 which is *not* subtracted) and the observation equation (nu) as two values."
-  (let+ ((n (checked-dlm-length evolution+ theta+ data+ observation+))
+  (let+ (((&structure-r/o dlm- evolution+ observation+) dlm)
+         (n (checked-dlm-length dlm data+ theta+))
          (omega+ (make-array (1- n)))
          (nu+ (make-array n)))
     (iter
@@ -136,10 +179,11 @@ which is *not* subtracted) and the observation equation (nu) as two values."
   (let+ (((&structure-r/o dlm-observation1- F V) observation))
     (draw (r-normal (+ (* F state)) V))))
 
-(defun dlm-simulate (aR evolution+ observation+)
+(defun dlm-simulate (aR dlm)
   "Generate a sample for a DLM with given parametes, drawing the first state
 from N(a,R).  Return (values state+ data+).  For univariate DLMs."
-  (let* ((n (checked-dlm-length evolution+ observation+))
+  (let+ (((&structure-r/o dlm- evolution+ observation+) dlm)
+         (n (dlm-length dlm))
          (state (draw aR))
          (state+ (make-array n :element-type 'double-float))
          (data+ (make-array n :element-type 'double-float)))

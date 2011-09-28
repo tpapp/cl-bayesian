@@ -23,11 +23,11 @@
   ;; checked against results from R/dlm, univariate case
   (let+ ((n 10)
          (W 0.7d0)
-         (evolution+ (filled-array (1- n) (dlm-evolution1 :W W)))
-         (observation+ (filled-array n (dlm-observation1 :V 0.5d0)))
+         (dlm (make-dlm (dlm-evolution1 :W W) (dlm-observation1 :V 0.5d0)
+                        :length n))
          (y (filled-array 10 1d0))
          ((&values mC aR)
-          (dlm-forward-filtering (r-normal 0d0 W) evolution+ observation+ y))
+          (dlm-forward-filtering (r-normal 0d0 W) dlm y))
          (*lift-equality-test* #'==))
     (ensure-same (map1 #'mean mC)
                  #(0.5833333 0.8603352 0.9544295 0.9851741 0.9951780
@@ -151,39 +151,36 @@ Used for testing."
             v))
         vector))
 
-(defun dlm-simulate-ranks (n aR evolution+ observation+
-                           &key (missing-probability 0.05d0))
+(defun dlm-simulate-ranks (n aR dlm &key (missing-probability 0.05d0))
   "Return a vector of empirical ranks of simulated data."
-  (let+ (((&values state+ data+) (dlm-simulate aR evolution+ observation+))
+  (let+ (((&values state+ data+) (dlm-simulate aR dlm))
          (data+ (remove-observations data+ missing-probability))
          (draws (combine
                  (filled-array n
                                (lambda ()
-                                 (dlm-flatten-theta
-                                  (dlm-ff-bs aR evolution+ observation+
-                                             data+)))))))
+                                 (dlm-flatten-theta (dlm-ff-bs aR dlm data+)))))))
     (calculate-empirical-ranks (dlm-flatten-theta state+) draws)))
 
-(defun dlm-simulate-ranks+ (n-replications n-draws aR evolution+ observation+
-                             &key (stream *standard-output*)
-                                  (missing-probability 0.05d0))
+(defun dlm-simulate-ranks+ (n-replications n-draws aR dlm
+                            &key (stream *standard-output*)
+                                 (missing-probability 0.05d0))
   "Return a vector of ranks which can be passed to
 calculate-abs-z-statistics."
   (let ((progress-bar (text-progress-bar stream n-replications)))
     (filled-array n-replications
                   (lambda ()
                     (funcall progress-bar)
-                    (dlm-simulate-ranks n-draws aR evolution+ observation+
+                    (dlm-simulate-ranks n-draws aR dlm
                                         :missing-probability
                                         missing-probability)))))
 
 (addtest (dlm-tests)
   dlm-ff-bs-univariate
   (let* ((n 10)
-         (evolution+ (filled-array (1- n) (dlm-evolution1 :W 0.05d0)))
-         (observation+ (filled-array n (dlm-observation1 :V 0.02d0)))
-         (ranks+ (dlm-simulate-ranks+ 100 200 (r-normal 0 2)
-                                      evolution+ observation+))
+         (dlm (make-dlm (dlm-evolution1 :W 0.05d0)
+                        (dlm-observation1 :V 0.02d0)
+                        :length n))
+         (ranks+ (dlm-simulate-ranks+ 100 200 (r-normal 0 2) dlm))
          (z-statistics (calculate-abs-z-statistics ranks+)))
     (ensure (small-zs? z-statistics))))
 
