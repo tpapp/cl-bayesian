@@ -90,14 +90,15 @@ prior/posterior draws to vectors."
 
 (addtest (samplers-tests)
   lr-kv-small
-  (let+ ((x (clo 1 1 :/
-                 1 2
-                 1 3
-                 1 4
-                 1 5
-                 1 6
-                 1 7))
-         (y (clo 2 2 3 4 5 6 6))
+  (let+ ((x (dense 'lla-double 
+              (1 1)
+              (1 2)
+              (1 3)
+              (1 4)
+              (1 5)
+              (1 6)
+              (1 7)))
+         (y (vec 'lla-double 2 2 3 4 5 6 6))
          (sd 19d0)
          (lr (lr-kv y x (expt sd 2)))
          ((&accessors-r/o mean variance) lr)

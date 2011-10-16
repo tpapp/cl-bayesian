@@ -134,13 +134,15 @@ Analysis, 2nd edition.  If prior is not given, the reference prior is used."
             (multivariate-normal-model
              (values (mean it) (kappa it) (nu it) (inverse-scale it)))
             (null
-             (values (zero) 0d0 -1 (zero)))))
+             (values nil 0d0 -1 nil))))
          (kappa (+ kappa0 n))
          (nu (+ nu0 n))
          (mu (e+ (e* (/ kappa0 kappa) mu0) (e* (/ n kappa) mean)))
          (inverse-scale (e+ inverse-scale0
                             sse
-                            (outer (e- mean mu0) t (/ (* kappa0 n) kappa)))))
+                            (outer (e* (e- mean mu0)
+                                       (sqrt (/ (* kappa0 n) kappa)))
+                                   t))))
     (make-instance 'multivariate-normal-model :inverse-scale inverse-scale
                                               :nu nu :kappa kappa :mean mu)))
 
