@@ -177,7 +177,7 @@ calculate-abs-z-statistics."
 (addtest (dlm-tests)
   dlm-ff-bs-univariate
   (let* ((n 10)
-         (dlm (make-dlm (dlm-evolution1 :W 0.05d0)
+         (dlm (make-dlm (dlm-evolution1 :mu 9d0 :W 0.05d0)
                         (dlm-observation1 :V 0.02d0)
                         :length n))
          (ranks+ (dlm-simulate-ranks+ 100 200 (r-normal 0 2) dlm))
