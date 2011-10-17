@@ -2,11 +2,11 @@
   (:nicknames mcmc)
   (:use common-lisp iterate let-plus anaphora cl-num-utils alexandria
         lla cl-random)
-  (:shadowing-import-from cl-num-utils
-                          mean variance xor) ; also in alexandria
+  (:shadowing-import-from cl-num-utils  ; also in alexandria
+                          mean variance xor median)
   (:export
    
-   ;; utilities - nothing is exported
+   ;; utilities
    
    overdisperse
 
