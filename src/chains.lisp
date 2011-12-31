@@ -110,9 +110,9 @@ Ranges narrower than MINIMUM-LENGTH are discarded."
   (let+ ((model (model (first* sample)))
          (n-parameters (layout-length (scalar-parameters-layout model)))
          (n-sample (length sample))
-         (accumulators (filled-array n-parameters accumulator-generator))
+         (accumulators (generate-array n-parameters accumulator-generator))
          (autocovariance-accumulators
-          (filled-array n-parameters (curry #'autocovariance-accumulator lags)))
+          (generate-array n-parameters (curry #'autocovariance-accumulator lags)))
          (sse-ranges (aif sse-ranges
                           it
                           (calculate-psrf-ranges 
@@ -128,7 +128,7 @@ Ranges narrower than MINIMUM-LENGTH are discarded."
            (map 'vector
                 (lambda+ ((start . end))
                   (let ((sse-accumulators
-                         (filled-array n-parameters #'mean-sse-accumulator)))
+                         (generate-array n-parameters #'mean-sse-accumulator)))
                     (loop for sample-index from start below end do
                       (let+ (((&accessors-r/o scalar-parameters)
                               (aref sample sample-index)))

@@ -47,14 +47,14 @@ length)."
 ;;   "Return (valyes y parameters)."
 ;;   (let+ (((&values beta sigma) (draw prior)))
 ;;     (values
-;;      (e+ (mm x beta) (filled-array (nrow x)
+;;      (e+ (mm x beta) (generate-array (nrow x)
 ;;                                    (generator (r-normal 0 (sqrt sigma)))))
 ;;      (concat 'double-float (vector sigma) beta))))
 
 ;; (defun simulate-linear-regression-parameters (n y x prior)
 ;;   "Given Y, return a matrix of draws."
 ;;   (let ((lr (linear-regression y x :prior prior)))
-;;     (combine (filled-array n (lambda ()
+;;     (combine (generate-array n (lambda ()
 ;;                                (let+ (((&values beta sigma) (draw lr)))
 ;;                                  (concat 'double-float (vector sigma) beta))))
 ;;              'double-float)))
@@ -67,7 +67,7 @@ length)."
 ;;   (let ((n 1000)
 ;;         (x *x*)
 ;;         (prior *prior*))
-;;     (filled-array 100 (lambda ()
+;;     (generate-array 100 (lambda ()
 ;;                         (let+ (((&values y parameters)
 ;;                                 (simulate-linear-regression-y prior x))
 ;;                                (draws (simulate-linear-regression-parameters

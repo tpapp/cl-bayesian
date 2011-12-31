@@ -33,7 +33,7 @@
   ;; usually we there are no DRAW methods for models, but in the IID case it
   ;; makes sense
   (let+ (((&structure-r/o iid-model- n generator) model))
-    (make-iid-state :model model :elements (filled-array n generator))))
+    (make-iid-state :model model :elements (generate-array n generator))))
 
 (defstruct iid-state
   "For testing MCMC diagnostics.  Of course not a state in the actual sense."
@@ -104,7 +104,7 @@
                                   :burn-in-fraction (/ burn-in n-sample)))
          ((&flet+ sweep-with-accumulators
               ((start . end) accumulator-generator)
-            (let ((acc (filled-array n-parameters accumulator-generator)))
+            (let ((acc (generate-array n-parameters accumulator-generator)))
               (loop for sample-index from start below end do
                 (loop for p across (iid-state-elements
                                     (aref sample sample-index))

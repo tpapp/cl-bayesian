@@ -25,7 +25,7 @@
          (W 0.7d0)
          (dlm (make-dlm (dlm-evolution1 :W W) (dlm-observation1 :V 0.5d0)
                         :length n))
-         (y (filled-array 10 1d0))
+         (y (generate-array 10 1d0))
          ((&values mC aR)
           (dlm-forward-filtering (r-normal 0d0 W) dlm y))
          (*lift-equality-test* #'==))
@@ -44,7 +44,7 @@
 ;;   ;; checked against results from R/dlm, univariate case
 ;;   (let+ ((n 10)
 ;;          (W 0.7d0)
-;;          (evolution+ (filled-array (1- n) (dlm-evolution1 :W W)))
+;;          (evolution+ (generate-array (1- n) (dlm-evolution1 :W W)))
 ;;          (parameters (make-dlm-parameters :g 1 :W 0.7 :mu 0 :F 1 :V 0.5))
 ;;          (y (make-array 10 :initial-element #(1)))
 ;;          ((&values m C-inverse a)
@@ -156,9 +156,9 @@ Used for testing."
   (let+ (((&values state+ data+) (dlm-simulate aR dlm))
          (data+ (remove-observations data+ missing-probability))
          (draws (combine
-                 (filled-array n
-                               (lambda ()
-                                 (dlm-flatten-theta (dlm-ff-bs aR dlm data+)))))))
+                 (generate-array n
+                                 (lambda ()
+                                   (dlm-flatten-theta (dlm-ff-bs aR dlm data+)))))))
     (calculate-empirical-ranks (dlm-flatten-theta state+) draws)))
 
 (defun dlm-simulate-ranks+ (n-replications n-draws aR dlm
@@ -167,12 +167,12 @@ Used for testing."
   "Return a vector of ranks which can be passed to
 calculate-abs-z-statistics."
   (let ((progress-bar (text-progress-bar stream n-replications)))
-    (filled-array n-replications
-                  (lambda ()
-                    (funcall progress-bar)
-                    (dlm-simulate-ranks n-draws aR dlm
-                                        :missing-probability
-                                        missing-probability)))))
+    (generate-array n-replications
+                    (lambda ()
+                      (funcall progress-bar)
+                      (dlm-simulate-ranks n-draws aR dlm
+                                          :missing-probability
+                                          missing-probability)))))
 
 (addtest (dlm-tests)
   dlm-ff-bs-univariate

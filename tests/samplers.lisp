@@ -8,7 +8,7 @@
 (defun 2phase-posterior (n accumulator posterior-function)
   "Return two posteriors, the first accumulated in 2 sweeps, the first in
 one."
-  (let* ((v (filled-array (* 2 n) (generator (r-normal))))
+  (let* ((v (generate-array (* 2 n) (generator (r-normal))))
          (acc1 (sweep (funcall accumulator) (subseq v 0 n)))
          (acc2 (sweep (funcall accumulator) (subseq v n)))
          (acc (sweep (funcall accumulator) v))
@@ -22,12 +22,12 @@ one."
 then (ESTIMATE DATA PRIOR) to estimate the posterior.  Obtain N draws from the
 latter, and return empirical ranks.  PARAMETERS is used to convert
 prior/posterior draws to vectors."
-  (filled-array m
+  (generate-array m
                 (lambda ()
                   (let+ ((theta0 (draw prior))
                          (y (funcall simulate theta0))
                          (posterior (funcall estimate y prior))
-                         (theta+ (filled-array n (generator posterior))))
+                         (theta+ (generate-array n (generator posterior))))
                     (calculate-empirical-ranks (funcall parameters theta0)
                                                (combine
                                                 (map1 parameters theta+)))))))
@@ -39,7 +39,7 @@ prior/posterior draws to vectors."
          (ranks+
           (simulate-ranks (r-inverse-chi-square 9 2d0)
                           (lambda (v)
-                            (filled-array 50 (generator (r-normal 0 v))))
+                            (generate-array 50 (generator (r-normal 0 v))))
                           (lambda (y prior)
                             (univariate-normal-error 
                              (sweep (mean-sse-accumulator) y)
@@ -59,7 +59,7 @@ prior/posterior draws to vectors."
          (ranks+
           (simulate-ranks prior
                           (lambda+ (model-draw)
-                            (filled-array 50 (generator model-draw)))
+                            (generate-array 50 (generator model-draw)))
                           (lambda (y prior)
                             (univariate-normal-model
                              (sweep (mean-sse-accumulator) y)
@@ -112,7 +112,7 @@ prior/posterior draws to vectors."
   (let+ ((*lift-equality-test* #'==)
          (k 2)
          (n 10)
-         (y (filled-array (list (* 2 n) k) (curry #'random 10d0)
+         (y (generate-array (list (* 2 n) k) (curry #'random 10d0)
                           'double-float))
          ;; single step
          (p2 (multivariate-normal-model y))
@@ -123,7 +123,7 @@ prior/posterior draws to vectors."
          (ranks
           (simulate-ranks p2
                           (lambda+ (model-draw)
-                            (combine (filled-array 50
+                            (combine (generate-array 50
                                                    (generator model-draw))))
                           (lambda (y prior)
                             (multivariate-normal-model y :prior prior))
