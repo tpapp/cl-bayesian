@@ -16,6 +16,6 @@ the expected number when corrected by MARGIN."
 
 ;; EXTERNAL
 
-(defun run-cl-bayesian-tests ()
-  "Run all the tests for LLA."
+(defun run ()
+  "Run all the tests."
   (run-tests :suite 'cl-bayesian-tests))

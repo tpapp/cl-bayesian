@@ -1,4 +1,4 @@
-(defsystem cl-bayesian
+(defsystem #:cl-bayesian
   :description ""
   :author "Tamas K Papp"
   :license "LLGPL"
@@ -23,12 +23,13 @@
      (:file "chains")
      (:file "validation")
      (:file "dlm")
+     (:file "mosaic")
      ;; (:file "polynomials")
      )))
-  :depends-on
-  (iterate let-plus anaphora alexandria cl-num-utils lla cl-random))
+  :depends-on (#:iterate #:let-plus #:anaphora #:alexandria #:cl-num-utils
+                #:lla #:cl-random))
 
-(defsystem cl-bayesian-tests
+(defsystem #:cl-bayesian-tests
   :description "Unit tests for the CL-BAYESIAN library."
   :author "Tamas K Papp"
   :license "Same as CL-BAYESIAN -- this is part of the latter."
@@ -54,5 +55,5 @@
      (:file "chains")
      (:file "dlm"))))
   :depends-on
-  (iterate let-plus anaphora alexandria lift cl-num-utils lla cl-random
-   cl-random-tests))
+  (#:iterate #:let-plus #:anaphora #:alexandria #:lift #:cl-num-utils #:lla
+    #:cl-random #:cl-random-tests))
