@@ -49,6 +49,30 @@ states."
       (progress))
     (values draws state)))
 
+(defgeneric mosaic (object)
+  (:documentation ""))
+
+(defun mcmc-mosaic-matrix (state n &key (stream *standard-output*)
+                                        (progress-bar-length 80)
+                                        (mosaic (mosaic state))
+                                        (element-type t))
+  ;;   "Sample N draws the Markov chain defined by state.  STREAM and
+  ;; PROGRESS-BAR-LENGTH govern the output of the progress bar (if not desired, set
+  ;; STREAM to NIL).  Return the updated STATE as the second value.
+
+  ;; The sampling works via the method DRAW, which should be defined for the
+  ;; states."
+  (let+ (((&fwrap progress)
+          (text-progress-bar stream n 
+                             :character #\* :length progress-bar-length))
+         (draws (make-mosaic-matrix mosaic n element-type)))
+    (dotimes (index n)
+      (pack-slots draws index state)
+      (setf state (draw state))
+      (progress))
+    (values draws state)))
+
+
 ;;;  Counter for Metropolis (and Metropolis-Hastings) steps.
 ;;;
 ;;;  Counts the TOTAL and ACCEPTED number of steps.  To reset the

@@ -85,4 +85,7 @@
    #:make-mosaic
    #:template-mosaic
    #:template-mosaic-symbols
-   #:make-mosaic-matrix))
+   #:make-mosaic-matrix
+   #:mcmc-mosaic-matrix
+   #:mosaic-vector
+   #:make-mosaic-vector))

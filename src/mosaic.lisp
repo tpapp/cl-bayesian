@@ -116,11 +116,29 @@ modified."
   (mosaic nil :type mosaic :read-only t)
   (elements nil :type matrix :read-only t))
 
-(defun make-mosaic-matrix (mosaic nrow &optional (element-type t))
-  "Make a mosaic matrix."
+(defun make-mosaic-matrix (mosaic nrow &rest make-array-arguments
+                                       &key (element-type t) initial-element
+                                            initial-contents)
+  "Make a mosaic matrix.  Keyword arguments are passed on to make-array."
+  (declare (ignore element-type initial-element initial-contents))
   (make-mosaic-matrix% :mosaic mosaic
-                       :elements (make-array (list nrow (mosaic-size mosaic))
-                                             :element-type element-type)))
+                       :elements (apply #'make-array
+                                        (list nrow (mosaic-size mosaic))
+                                        make-array-arguments)))
+
+(defstruct (mosaic-vector (:constructor make-mosaic-vector%))
+  (mosaic nil :type mosaic :read-only t)
+  (elements nil :type vector :read-only t))
+
+(defun make-mosaic-vector (mosaic &rest make-array-arguments 
+                                  &key (element-type t) initial-element
+                                       initial-contents)
+  "Make a mosaic vector.  Keyword arguments are passed on to make-array."
+  (declare (ignore element-type initial-element initial-contents))
+  (make-mosaic-vector% :mosaic mosaic
+                       :elements (apply #'make-array (mosaic-size mosaic)
+                                        make-array-arguments)))
+  
 
 (defmethod pack-slots ((mosaic-matrix mosaic-matrix) (row fixnum) object)
   (let+ (((&structure-r/o mosaic-matrix- mosaic elements) mosaic-matrix))
@@ -130,6 +148,36 @@ modified."
   (let+ (((&structure-r/o mosaic-matrix- mosaic elements) mosaic-matrix))
     (unpack-slots mosaic (subarray elements row) object)))
 
+(defmethod sub ((mosaic-matrix mosaic-matrix) &rest selections)
+  (let+ (((row-selection key-selection) selections)
+         ((&structure-r/o mosaic-matrix- mosaic elements) mosaic-matrix)
+         ((nrow ncol) (array-dimensions elements))
+         (row-selection (sub-resolve-selection row-selection nrow t)))
+    (if (eq key-selection t)
+        (let ((elements (sub elements row-selection t)))
+          (if (vectorp elements)
+              (make-mosaic-vector% :mosaic mosaic :elements elements)
+              (make-mosaic-matrix% :mosaic mosaic :elements elements)))
+        (let+ (((offset . dimensions)
+                (mosaic-location mosaic key-selection))
+               ((&flet extract (row-index)
+                  (if dimensions
+                      (displace-array elements dimensions
+                                      (+ offset (* ncol row-index)))
+                      (aref elements row-index offset)))))
+          (if (fixnum? row-selection)
+              (extract row-selection)
+              (map 'vector #'extract row-selection))))))
+
+(defmethod sub ((mosaic-vector mosaic-vector) &rest selections)
+  (let+ (((key-selection) selections)
+         ((&structure-r/o mosaic-vector- mosaic elements) mosaic-vector))
+    (if (eq key-selection t)
+        mosaic-vector
+        (let+ (((offset . dimensions) (mosaic-location mosaic key-selection)))
+          (if dimensions
+              (displace-array elements dimensions offset)
+              (aref elements offset))))))
 
 ;; (defclass foo ()
 ;;   ((a :accessor a :initarg :a)
