@@ -36,6 +36,23 @@ vector (the size of which can be obtained with MOSAIC-SIZE)."
                     keys-and-dimensions)))
     (make-mosaic% :keys keys :table table :size offset)))
 
+(defun template-mosaic (keys-and-objects)
+  "Create a mosaic using objects as a template."
+  (make-mosaic (map 'vector (lambda+ ((key . object))
+                              (cons key
+                                    (if (arrayp object)
+                                        (array-dimensions object)
+                                        nil)))
+                    keys-and-objects)))
+
+(defmacro template-mosaic-symbols (&rest keys)
+  "Convenience macro for templating a mosaic on keys or (key variable)."
+  `(template-mosaic
+    (list ,@(mapcar (lambda (key) 
+                      (let+ (((key &optional (form key)) (ensure-list key)))
+                        `(cons ',key ,form)))
+                    keys))))
+
 (defun mosaic-location (mosaic key)
   "Return (CONS OFFSET DIMENSIONS).  Read-only, consequences are undefined if
 modified."

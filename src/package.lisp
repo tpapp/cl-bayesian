@@ -83,4 +83,6 @@
    #:unpack-slots
    #:mosaic
    #:make-mosaic
+   #:template-mosaic
+   #:template-mosaic-symbols
    #:make-mosaic-matrix))
