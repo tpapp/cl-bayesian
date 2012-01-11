@@ -120,7 +120,7 @@ modified."
                                        &key (element-type t) initial-element
                                             initial-contents)
   "Make a mosaic matrix.  Keyword arguments are passed on to make-array."
-  (declare (ignore element-type initial-element initial-contents))
+  (declare (ignorable element-type initial-element initial-contents))
   (make-mosaic-matrix% :mosaic mosaic
                        :elements (apply #'make-array
                                         (list nrow (mosaic-size mosaic))
@@ -134,7 +134,7 @@ modified."
                                   &key (element-type t) initial-element
                                        initial-contents)
   "Make a mosaic vector.  Keyword arguments are passed on to make-array."
-  (declare (ignore element-type initial-element initial-contents))
+  (declare (ignorable element-type initial-element initial-contents))
   (make-mosaic-vector% :mosaic mosaic
                        :elements (apply #'make-array (mosaic-size mosaic)
                                         make-array-arguments)))
