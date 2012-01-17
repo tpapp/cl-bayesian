@@ -48,7 +48,7 @@ vector (the size of which can be obtained with MOSAIC-SIZE)."
 (defmacro template-mosaic-symbols (&rest keys)
   "Convenience macro for templating a mosaic on keys or (key variable)."
   `(template-mosaic
-    (list ,@(mapcar (lambda (key) 
+    (list ,@(mapcar (lambda (key)
                       (let+ (((key &optional (form key)) (ensure-list key)))
                         `(cons ',key ,form)))
                     keys))))
@@ -103,7 +103,7 @@ modified."
                          (object standard-object))
   (map nil (lambda (key)
              (setf (slot-value object key)
-                   (mosaic-unpack-key mosaic vector key)))             
+                   (mosaic-unpack-key mosaic vector key)))
        (mosaic-keys mosaic))
   object)
 
@@ -115,6 +115,9 @@ modified."
 (defstruct (mosaic-matrix (:constructor make-mosaic-matrix%))
   (mosaic nil :type mosaic :read-only t)
   (elements nil :type matrix :read-only t))
+
+(defmethod nrow ((matrix mosaic-matrix))
+  (nrow (mosaic-matrix-elements matrix)))
 
 (defun make-mosaic-matrix (mosaic nrow &rest make-array-arguments
                                        &key (element-type t) initial-element
@@ -130,7 +133,7 @@ modified."
   (mosaic nil :type mosaic :read-only t)
   (elements nil :type vector :read-only t))
 
-(defun make-mosaic-vector (mosaic &rest make-array-arguments 
+(defun make-mosaic-vector (mosaic &rest make-array-arguments
                                   &key (element-type t) initial-element
                                        initial-contents)
   "Make a mosaic vector.  Keyword arguments are passed on to make-array."
@@ -138,7 +141,7 @@ modified."
   (make-mosaic-vector% :mosaic mosaic
                        :elements (apply #'make-array (mosaic-size mosaic)
                                         make-array-arguments)))
-  
+
 
 (defmethod pack-slots ((mosaic-matrix mosaic-matrix) (row fixnum) object)
   (let+ (((&structure-r/o mosaic-matrix- mosaic elements) mosaic-matrix))
@@ -178,6 +181,16 @@ modified."
           (if dimensions
               (displace-array elements dimensions offset)
               (aref elements offset))))))
+
+(defmethod map-columns (function (matrix mosaic-matrix)
+                        &optional element-type)
+  (let+ (((&structure-r/o mosaic-matrix- mosaic elements) matrix))
+    (make-mosaic-matrix% :mosaic mosaic
+                         :elements (map-columns function elements
+                                                element-type))))
+
+(defmethod quantiles ((matrix mosaic-matrix) qs)
+  (map-columns (lambda (c) (quantiles c qs)) matrix))
 
 ;; (defclass foo ()
 ;;   ((a :accessor a :initarg :a)

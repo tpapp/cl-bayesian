@@ -1,8 +1,8 @@
 (in-package :cl-bayesian)
 
 ;;; general MCMC interface
-;;; 
-;;; 
+;;;
+;;;
 
 ;;; model
 
@@ -40,7 +40,7 @@ STREAM to NIL).  Return the updated STATE as the second value.
 The sampling works via the method DRAW, which should be defined for the
 states."
   (let+ (((&fwrap progress)
-          (text-progress-bar stream n 
+          (text-progress-bar stream n
                              :character #\* :length progress-bar-length))
          (draws (make-array n)))
     (dotimes (index n)
@@ -63,9 +63,9 @@ states."
   ;; The sampling works via the method DRAW, which should be defined for the
   ;; states."
   (let+ (((&fwrap progress)
-          (text-progress-bar stream n 
+          (text-progress-bar stream n
                              :character #\* :length progress-bar-length))
-         (draws (make-mosaic-matrix mosaic n element-type)))
+         (draws (make-mosaic-matrix mosaic n :element-type element-type)))
     (dotimes (index n)
       (pack-slots draws index state)
       (setf state (draw state))

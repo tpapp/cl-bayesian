@@ -79,6 +79,7 @@
    #:dlm-ff-bs
    #:dlm-errors
    #:dlm-simulate
+   ;; NEED TO BE SORTED OUT
    #:pack-slots
    #:unpack-slots
    #:mosaic
@@ -88,4 +89,5 @@
    #:make-mosaic-matrix
    #:mcmc-mosaic-matrix
    #:mosaic-vector
-   #:make-mosaic-vector))
+   #:make-mosaic-vector
+   #:mosaic-matrix))
