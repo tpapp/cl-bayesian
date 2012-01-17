@@ -5,7 +5,7 @@
   :in-order-to ((test-op (test-op cl-bayesian-tests)))
   :serial t
   :components
-  ((:module 
+  ((:module
     "package-init"
     :pathname #P "src/"
     :components
@@ -19,11 +19,11 @@
     ((:file "utilities")
      (:file "mcmc")
      (:file "slice-sampling")
+     (:file "mosaic")
      (:file "samplers")
      (:file "chains")
      (:file "validation")
      (:file "dlm")
-     (:file "mosaic")
      ;; (:file "polynomials")
      )))
   :depends-on (#:iterate #:let-plus #:anaphora #:alexandria #:cl-num-utils
@@ -33,9 +33,9 @@
   :description "Unit tests for the CL-BAYESIAN library."
   :author "Tamas K Papp"
   :license "Same as CL-BAYESIAN -- this is part of the latter."
-  :serial t 
+  :serial t
   :components
-  ((:module 
+  ((:module
     "package-init"
     :pathname #P "tests/"
     :components
