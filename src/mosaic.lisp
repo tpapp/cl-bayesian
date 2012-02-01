@@ -22,7 +22,7 @@ vector (the size of which can be obtained with MOSAIC-SIZE)."
 
 (defun make-mosaic (keys-and-dimensions)
   "Create a mosaic from a sequence of (cons key dimensions)."
-  (let* ((table (make-hash-table))
+  (let* ((table (make-hash-table :test #'equal))
          (offset 0)
          (keys (map 'vector
                     (lambda (key-and-dimensions)
@@ -53,12 +53,16 @@ vector (the size of which can be obtained with MOSAIC-SIZE)."
                         `(cons ',key ,form)))
                     keys))))
 
-(defun mosaic-location (mosaic key)
+(defun mosaic-location (mosaic key &optional subscripts)
   "Return (CONS OFFSET DIMENSIONS).  Read-only, consequences are undefined if
 modified."
   (let+ (((&values value present?) (gethash key (mosaic-table mosaic))))
     (assert present? () "Key ~A not found." key)
-    value))
+    (if subscripts
+        (let+ (((&values offset dimensions)
+                (subarray-location (cdr value) subscripts)))
+          (cons (+ (car value) offset) dimensions))
+        value)))
 
 (defmethod print-object ((mosaic mosaic) stream)
   (if *print-readably*
@@ -116,18 +120,33 @@ modified."
   (mosaic nil :type mosaic :read-only t)
   (elements nil :type matrix :read-only t))
 
-(defmethod nrow ((matrix mosaic-matrix))
-  (nrow (mosaic-matrix-elements matrix)))
+(defmethod elements ((matrix mosaic-matrix))
+  (mosaic-matrix-elements matrix))
 
-(defun make-mosaic-matrix (mosaic nrow &rest make-array-arguments
-                                       &key (element-type t) initial-element
-                                            initial-contents)
-  "Make a mosaic matrix.  Keyword arguments are passed on to make-array."
-  (declare (ignorable element-type initial-element initial-contents))
-  (make-mosaic-matrix% :mosaic mosaic
-                       :elements (apply #'make-array
-                                        (list nrow (mosaic-size mosaic))
-                                        make-array-arguments)))
+(defmethod nrow ((matrix mosaic-matrix))
+  (nrow (elements matrix)))
+
+(defun make-mosaic-matrix (mosaic nrow-or-matrix
+                           &rest make-array-arguments
+                           &key (element-type t element-type?)
+                                (initial-element nil initial-element?))
+  "Make a mosaic matrix.  Keyword arguments are passed on to make-array.  When
+the second argument is a matrix, it is used (without copying), but the
+consistency with mosaic is checked."
+  (declare (ignorable initial-element))
+  (let ((size (mosaic-size mosaic)))
+    (make-mosaic-matrix% :mosaic mosaic
+                         :elements (aetypecase nrow-or-matrix
+                                     (array-length
+                                      (apply #'make-array
+                                             (list it size)
+                                             make-array-arguments))
+                                     (matrix
+                                      (assert (or (not element-type?)
+                                                  (equalp (upgraded-array-element-type element-type)
+                                                          (array-element-type nrow-or-matrix))))
+                                      (assert (not initial-element?))
+                                      it)))))
 
 (defstruct (mosaic-vector (:constructor make-mosaic-vector%))
   (mosaic nil :type mosaic :read-only t)
@@ -152,7 +171,7 @@ modified."
     (unpack-slots mosaic (subarray elements row) object)))
 
 (defmethod sub ((mosaic-matrix mosaic-matrix) &rest selections)
-  (let+ (((row-selection key-selection) selections)
+  (let+ (((row-selection key-selection &rest subscripts) selections)
          ((&structure-r/o mosaic-matrix- mosaic elements) mosaic-matrix)
          ((nrow ncol) (array-dimensions elements))
          (row-selection (sub-resolve-selection row-selection nrow t)))
@@ -162,7 +181,7 @@ modified."
               (make-mosaic-vector% :mosaic mosaic :elements elements)
               (make-mosaic-matrix% :mosaic mosaic :elements elements)))
         (let+ (((offset . dimensions)
-                (mosaic-location mosaic key-selection))
+                (mosaic-location mosaic key-selection subscripts))
                ((&flet extract (row-index)
                   (if dimensions
                       (displace-array elements dimensions
@@ -170,24 +189,37 @@ modified."
                       (aref elements row-index offset)))))
           (if (fixnum? row-selection)
               (extract row-selection)
-              (map 'vector #'extract row-selection))))))
+              (if dimensions
+                  (map 'vector #'extract row-selection)
+                  (sub elements row-selection offset)))))))
 
 (defmethod sub ((mosaic-vector mosaic-vector) &rest selections)
-  (let+ (((key-selection) selections)
+  (let+ (((key-selection &rest subscripts) selections)
          ((&structure-r/o mosaic-vector- mosaic elements) mosaic-vector))
     (if (eq key-selection t)
         mosaic-vector
-        (let+ (((offset . dimensions) (mosaic-location mosaic key-selection)))
+        (let+ (((offset . dimensions)
+                (mosaic-location mosaic key-selection subscripts)))
           (if dimensions
               (displace-array elements dimensions offset)
               (aref elements offset))))))
 
 (defmethod map-columns (function (matrix mosaic-matrix)
-                        &optional element-type)
+                        &key element-type)
   (let+ (((&structure-r/o mosaic-matrix- mosaic elements) matrix))
     (make-mosaic-matrix% :mosaic mosaic
                          :elements (map-columns function elements
-                                                element-type))))
+                                                :element-type element-type))))
+
+(defmethod map-rows (function (matrix mosaic-matrix)
+                     &key (element-type t) (mosaic nil mosaic?))
+  (let+ ((result (map-rows function (elements matrix)
+                           :element-type element-type)))
+    (if (and (typep result 'matrix) mosaic?)
+        (make-mosaic-matrix mosaic (length result)
+                            :element-type element-type
+                            :initial-contents result)
+        result)))
 
 (defmethod quantiles ((matrix mosaic-matrix) qs)
   (map-columns (lambda (c) (quantiles c qs)) matrix))
