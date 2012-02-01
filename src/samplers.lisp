@@ -15,12 +15,12 @@ taken from accumulator.  The following priors are accepted:
                             (r-inverse-gamma (values (alpha it) (beta it)))
                             (real (values it 0)))))
     (r-inverse-gamma (+ (/ (tally accumulator) 2d0) a)
-                     (+ (/ (sse accumulator 0d0) 2d0) b))))
+                     (+ (/ (sum-of-squares accumulator) 2d0) b))))
 
 ;;;; ****************************************************************
 ;;;; Normal-inverse-chi-square distribution.
 ;;;;
-;;;; 
+;;;;
 ;;;;
 ;;;;
 ;;;; ****************************************************************
@@ -42,7 +42,7 @@ taken from accumulator.  The following priors are accepted:
         (let ((s^2 (draw sigma-square)))
           (r-normal (draw (r-normal mu (/ s^2 kappa))) s^2))))
 
-(define-indirect-accessors r-univariate-normal-model 
+(define-indirect-accessors r-univariate-normal-model
     r-univariate-normal-model-sigma-square s^2 nu alpha beta)
 
 (defun univariate-normal-model (accumulator &optional prior)
@@ -83,7 +83,7 @@ taken from accumulator.  The following priors are accepted:
 ;;     (r-inverse-gamma alpha (/ ss 2d0))))
 
 ;;; linear regression with known variance
-;;; 
+;;;
 ;;; Not used frequently in practice, but useful for Gibbs sampling.  Return a
 ;;; multivariate normal, which is the posterior of the coefficients.
 
@@ -110,7 +110,7 @@ LR-KV-DUMMIES to generate dummy observations from a prior."
 
 ;;; multivariate normal model
 ;;;
-;;; 
+;;;
 
 (defclass multivariate-normal-model ()
   ((inverse-scale :accessor inverse-scale :initarg :inverse-scale)
