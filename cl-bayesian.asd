@@ -27,7 +27,7 @@
      ;; (:file "polynomials")
      )))
   :depends-on (#:iterate #:let-plus #:anaphora #:alexandria #:cl-num-utils
-                #:lla #:cl-random))
+                #:lla #:cl-random #:fare-mop))
 
 (defsystem #:cl-bayesian-tests
   :description "Unit tests for the CL-BAYESIAN library."
