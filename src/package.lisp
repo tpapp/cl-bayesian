@@ -3,7 +3,8 @@
   (:use #:common-lisp #:iterate #:let-plus #:anaphora #:cl-num-utils
         #:alexandria #:lla #:cl-random #:fare-mop)
   (:shadowing-import-from #:cl-num-utils  ; also in alexandria
-                          #:mean #:variance #:xor #:median #:displace-array)
+                          #:mean #:variance #:xor #:median #:displace-array
+                          #:sum)
   (:export
    ;; utilities
    #:overdisperse
@@ -90,4 +91,5 @@
    #:mcmc-mosaic-matrix
    #:mosaic-vector
    #:make-mosaic-vector
-   #:mosaic-matrix))
+   #:mosaic-matrix
+   #:binomial-model))

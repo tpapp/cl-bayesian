@@ -151,3 +151,13 @@ Analysis, 2nd edition.  If prior is not given, the reference prior is used."
          (sigma (draw (r-inverse-wishart nu inverse-scale)))
          (mean (draw (r-multivariate-normal mean sigma) :scale (/ kappa))))
     (r-multivariate-normal mean sigma)))
+
+;;; discrete/categorical
+
+(defun binomial-model (count total &optional prior)
+  "Simple (conjugate prior) model for binomial counts."
+  (let+ (((&values alpha beta)
+          (etypecase prior
+            (null (values 1 1))
+            (r-beta (values (alpha prior) (beta prior))))))
+    (r-beta (+ count alpha) (+ (- total count) beta))))
