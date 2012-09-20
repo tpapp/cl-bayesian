@@ -104,7 +104,7 @@ LR-KV-DUMMIES to generate dummy observations from a prior."
          ((&values y-transformed x-transformed)
           (add-regression-dummies y-transformed x-transformed prior
                                   #'lr-kv-dummies))
-         ((&values beta nil nil qr)
+         ((&values beta &ign &ign qr)
           (least-squares y-transformed x-transformed :method :qr)))
     (r-multivariate-normal beta (invert-xx qr))))
 
@@ -161,3 +161,14 @@ Analysis, 2nd edition.  If prior is not given, the reference prior is used."
             (null (values 1 1))
             (r-beta (values (alpha prior) (beta prior))))))
     (r-beta (+ count alpha) (+ (- total count) beta))))
+
+(defun multinomial-model (counts &optional prior)
+  "Simple (conjugate prior) model for multinomial counts."
+  (let ((alpha
+          (etypecase prior
+            (null (make-array (length counts) :initial-element 1d0
+                                              :element-type 'double-float))
+            (r-dirichlet (aprog1 (alpha prior)
+                           (assert (length= it counts)))))))
+    (r-dirichlet (e+ alpha counts)))
+  )

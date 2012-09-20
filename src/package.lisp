@@ -92,4 +92,5 @@
    #:mosaic-vector
    #:make-mosaic-vector
    #:mosaic-matrix
-   #:binomial-model))
+   #:binomial-model
+   #:multinomial-model))
