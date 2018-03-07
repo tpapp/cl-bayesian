@@ -1,9 +1,15 @@
 (defpackage #:cl-bayesian
   (:nicknames #:mcmc)
-  (:use #:common-lisp #:iterate #:let-plus #:anaphora #:cl-num-utils
-        #:alexandria #:lla #:cl-random #:fare-mop)
+  (:use #:common-lisp
+        #:cl-num-utils.statistics
+        #:alexandria
+        #:anaphora
+        #:fare-mop
+        #:iterate
+        #:lla
+        #:let-plus)
   (:shadowing-import-from #:cl-num-utils  ; also in alexandria
-                          #:mean #:variance #:xor #:median #:displace-array
+                          #:mean #:variance #:median
                           #:sum)
   (:export
    ;; utilities
